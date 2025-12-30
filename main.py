@@ -71,10 +71,12 @@ def serialize_for_json(obj: Any, max_rows: int = 500) -> Any:
         df_limited = obj.head(max_rows)
         records = df_limited.to_dict(orient="records")
         # Convert numpy types in records
+        truncated = len(obj) > max_rows
         return {
             "data": [serialize_for_json(record) for record in records],
             "total_rows": len(obj),
             "returned_rows": len(df_limited),
+            "truncated": truncated,
             "columns": list(obj.columns)
         }
     elif isinstance(obj, (np.integer, np.int64, np.int32)):
