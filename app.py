@@ -380,6 +380,8 @@ def standardize_dataframe(df, filename=""):
     
     # ===== REVENUE COLUMN =====
     revenue_candidates = [
+        # Exact match (for analytics output files)
+        'Revenue', 'revenue',
         # Underscore variations
         'net_sales', 'total_price', 'net_price', 'check_total', 
         'sales', 'amount', 'net_amount', 'total_net_sales',
@@ -396,9 +398,15 @@ def standardize_dataframe(df, filename=""):
     
     if revenue_col:
         st.write(f"      ✅ Found revenue column: `{revenue_col}`")
-        df_processed['revenue'] = clean_currency_column(df_processed[revenue_col])
+        # If column is already named "Revenue", it's likely already numeric (from analytics outputs)
+        if revenue_col == 'Revenue':
+            df_processed['revenue'] = pd.to_numeric(df_processed[revenue_col], errors='coerce').fillna(0)
+        else:
+            df_processed['revenue'] = clean_currency_column(df_processed[revenue_col])
     else:
-        st.warning(f"      ⚠️ No revenue column in `{filename}`. Available: {', '.join(df.columns.tolist()[:5])}")
+        # Show more columns in warning for debugging
+        available_cols = ', '.join(df.columns.tolist()[:10])
+        st.warning(f"      ⚠️ No revenue column in `{filename}`. Available: {available_cols}")
         df_processed['revenue'] = 0
     
     # ===== DATE COLUMN =====
@@ -421,6 +429,12 @@ def standardize_dataframe(df, filename=""):
     
     date_col = find_column_fuzzy(df_processed, date_candidates)
     
+    # Check if this is an analytics output file (doesn't need date column)
+    analytics_output_files = ['bottle_conversion', 'waste_efficiency', 'menu_volatility', 
+                             'discount_analysis', 'food_attachment', 'hourly_analysis', 
+                             'dow_analysis', 'discount_analysis']
+    is_analytics_output = any(analytics_name in filename.lower() for analytics_name in analytics_output_files)
+    
     if date_col:
         try:
             st.write(f"      ✅ Found date column: `{date_col}`")
@@ -429,8 +443,12 @@ def standardize_dataframe(df, filename=""):
             st.warning(f"      ⚠️ Could not parse dates in `{date_col}`")
             df_processed['date'] = pd.NaT
     else:
-        st.warning(f"      ⚠️ No date column in `{filename}`")
-        df_processed['date'] = pd.NaT
+        if is_analytics_output:
+            # Analytics output files don't need date columns - this is expected
+            df_processed['date'] = pd.NaT
+        else:
+            st.warning(f"      ⚠️ No date column in `{filename}`")
+            df_processed['date'] = pd.NaT
     
     # ===== ITEM/PRODUCT COLUMN =====
     item_candidates = [
