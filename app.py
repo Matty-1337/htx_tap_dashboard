@@ -1,11 +1,12 @@
 """
 Toast Analytics Dashboard - HTX TAP
 A comprehensive restaurant analytics platform for Toast POS data
+Version: 2.1 - Production Ready
 """
 
 import io
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -368,8 +369,15 @@ def enrich_dataframe(df):
     """
     df_enriched = df.copy()
     
-    # Drop rows with invalid dates
+    # Drop rows with invalid dates BEFORE any operations
     df_enriched = df_enriched.dropna(subset=['date'])
+    
+    # Additional validation: remove any remaining NaT values
+    df_enriched = df_enriched[df_enriched['date'].notna()]
+    
+    if df_enriched.empty:
+        st.error("❌ No valid dates found in the data after cleaning!")
+        return df_enriched
     
     # Time-based features
     df_enriched['year'] = df_enriched['date'].dt.year
@@ -384,6 +392,8 @@ def enrich_dataframe(df):
     
     # Meal period classification
     def classify_meal_period(hour):
+        if pd.isna(hour):
+            return 'Unknown'
         if 5 <= hour < 11:
             return 'Breakfast'
         elif 11 <= hour < 15:
@@ -405,6 +415,9 @@ def enrich_dataframe(df):
 
 def create_revenue_trend_chart(df):
     """Create daily revenue trend line chart."""
+    if df.empty:
+        return go.Figure()
+    
     daily_sales = df.groupby('date').agg({
         'revenue': 'sum',
         'quantity': 'sum'
@@ -454,6 +467,9 @@ def create_revenue_trend_chart(df):
 
 def create_top_items_chart(df, top_n=15):
     """Create horizontal bar chart of top selling items."""
+    if df.empty:
+        return go.Figure()
+    
     top_items = (
         df.groupby('item')['revenue']
         .sum()
@@ -490,6 +506,9 @@ def create_top_items_chart(df, top_n=15):
 
 def create_hourly_heatmap(df):
     """Create heatmap showing revenue by day of week and hour."""
+    if df.empty:
+        return go.Figure()
+    
     day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
     
     heatmap_data = (
@@ -531,6 +550,9 @@ def create_hourly_heatmap(df):
 
 def create_category_pie_chart(df):
     """Create pie chart showing revenue distribution by category."""
+    if df.empty:
+        return go.Figure()
+    
     category_sales = (
         df.groupby('category')['revenue']
         .sum()
@@ -565,6 +587,9 @@ def create_category_pie_chart(df):
 
 def create_meal_period_chart(df):
     """Create bar chart showing revenue by meal period."""
+    if df.empty:
+        return go.Figure()
+    
     meal_sales = (
         df.groupby('meal_period')['revenue']
         .sum()
@@ -607,6 +632,9 @@ def create_meal_period_chart(df):
 
 def create_weekday_weekend_comparison(df):
     """Create comparison chart for weekday vs weekend performance."""
+    if df.empty:
+        return go.Figure()
+    
     comparison = df.groupby('is_weekend').agg({
         'revenue': 'sum',
         'quantity': 'sum'
@@ -822,7 +850,7 @@ def main():
         """)
         
         st.markdown("---")
-        st.caption("v2.0 | © HTX TAP")
+        st.caption("v2.1 | © HTX TAP")
     
     # ===== MAIN HEADER =====
     st.title(f"🍞 {CLIENT_FOLDER} Analytics Dashboard")
@@ -889,6 +917,11 @@ def main():
         status.update(label="🎯 Enriching data...", state="running")
         processed_df = enrich_dataframe(combined_df)
         
+        if processed_df.empty:
+            status.update(label="❌ No valid data after processing", state="error")
+            st.error("No valid data found after cleaning. Check your CSV files for valid dates and revenue.")
+            st.stop()
+        
         status.update(
             label=f"✅ Data loaded successfully! ({len(processed_df):,} records)",
             state="complete",
@@ -901,26 +934,34 @@ def main():
     filter_col1, filter_col2, filter_col3 = st.columns([2, 2, 1])
     
     with filter_col1:
+        # FIXED: Properly handle date filtering with NaT protection
         if 'date' in processed_df.columns:
-            min_date = processed_df['date'].min().date()
-            max_date = processed_df['date'].max().date()
+            # Get valid dates only
+            valid_dates = processed_df['date'].dropna()
             
-            date_range = st.date_input(
-                "Date Range",
-                value=[min_date, max_date],
-                min_value=min_date,
-                max_value=max_date,
-                help="Select date range for analysis"
-            )
-            
-            if len(date_range) == 2:
-                start_date, end_date = date_range
-                mask = (
-                    (processed_df['date'].dt.date >= start_date) &
-                    (processed_df['date'].dt.date <= end_date)
+            if len(valid_dates) > 0:
+                min_date = valid_dates.min().date()
+                max_date = valid_dates.max().date()
+                
+                date_range = st.date_input(
+                    "Date Range",
+                    value=[min_date, max_date],
+                    min_value=min_date,
+                    max_value=max_date,
+                    help="Select date range for analysis"
                 )
-                df_filtered = processed_df[mask].copy()
+                
+                if len(date_range) == 2:
+                    start_date, end_date = date_range
+                    mask = (
+                        (processed_df['date'].dt.date >= start_date) &
+                        (processed_df['date'].dt.date <= end_date)
+                    )
+                    df_filtered = processed_df[mask].copy()
+                else:
+                    df_filtered = processed_df.copy()
             else:
+                st.error("No valid dates found in data.")
                 df_filtered = processed_df.copy()
         else:
             df_filtered = processed_df.copy()
@@ -963,21 +1004,19 @@ def main():
     unique_items = df_filtered['item'].nunique()
     
     # Calculate period-over-period growth (if applicable)
+    revenue_growth = 0
     if 'date' in df_filtered.columns and len(df_filtered) > 1:
-        date_range_days = (df_filtered['date'].max() - df_filtered['date'].min()).days
-        if date_range_days >= 14:  # At least 2 weeks of data
-            midpoint = df_filtered['date'].min() + timedelta(days=date_range_days // 2)
-            first_half_revenue = df_filtered[df_filtered['date'] < midpoint]['revenue'].sum()
-            second_half_revenue = df_filtered[df_filtered['date'] >= midpoint]['revenue'].sum()
-            
-            if first_half_revenue > 0:
-                revenue_growth = ((second_half_revenue - first_half_revenue) / first_half_revenue) * 100
-            else:
-                revenue_growth = 0
-        else:
+        try:
+            date_range_days = (df_filtered['date'].max() - df_filtered['date'].min()).days
+            if date_range_days >= 14:  # At least 2 weeks of data
+                midpoint = df_filtered['date'].min() + timedelta(days=date_range_days // 2)
+                first_half_revenue = df_filtered[df_filtered['date'] < midpoint]['revenue'].sum()
+                second_half_revenue = df_filtered[df_filtered['date'] >= midpoint]['revenue'].sum()
+                
+                if first_half_revenue > 0:
+                    revenue_growth = ((second_half_revenue - first_half_revenue) / first_half_revenue) * 100
+        except:
             revenue_growth = 0
-    else:
-        revenue_growth = 0
     
     # Display metrics
     kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
@@ -1083,13 +1122,18 @@ def main():
     
     with export_col1:
         # Prepare metrics for PDF
+        try:
+            date_range_str = f"{df_filtered['date'].min().strftime('%m/%d/%Y')} - {df_filtered['date'].max().strftime('%m/%d/%Y')}"
+        except:
+            date_range_str = "N/A"
+        
         metrics_dict = {
             'total_revenue': total_revenue,
             'total_transactions': total_transactions,
             'avg_order_value': avg_order_value,
             'total_items': total_items_sold,
             'unique_items': unique_items,
-            'date_range': f"{df_filtered['date'].min().strftime('%m/%d/%Y')} - {df_filtered['date'].max().strftime('%m/%d/%Y')}"
+            'date_range': date_range_str
         }
         
         top_items_df = (
