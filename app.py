@@ -1,7 +1,7 @@
 """
 Toast Analytics Dashboard - HTX TAP
 A comprehensive restaurant analytics platform for Toast POS data
-Version: 2.1 - Production Ready
+Version: 2.2 - Column Auto-Detection
 """
 
 import io
@@ -247,11 +247,16 @@ def get_files_from_supabase(client, bucket, folder):
         # First, try listing the specific folder
         files = client.storage.from_(bucket).list(folder)
         
+        # Filter out placeholder files and keep only CSVs
+        files = [f for f in files if f.get('name', '').lower().endswith('.csv') 
+                 and 'placeholder' not in f.get('name', '').lower()]
+        
         # If folder is empty, search root directory
         if not files:
             st.warning(f"⚠️ No files in '{folder}'. Searching entire bucket...")
             files = client.storage.from_(bucket).list("")
-            files = [f for f in files if f.get('name', '').lower().endswith('.csv')]
+            files = [f for f in files if f.get('name', '').lower().endswith('.csv')
+                     and 'placeholder' not in f.get('name', '').lower()]
         
         return files
     
@@ -262,7 +267,7 @@ def get_files_from_supabase(client, bucket, folder):
 @st.cache_data(ttl=1800)  # Cache for 30 minutes
 def load_csv_from_supabase(_client, bucket, filepath):
     """
-    Download and parse CSV file from Supabase.
+    Download and parse CSV file from Supabase with multiple encoding attempts.
     
     Args:
         _client: Supabase client (prefixed with _ to prevent hashing)
@@ -274,8 +279,21 @@ def load_csv_from_supabase(_client, bucket, filepath):
     """
     try:
         response = _client.storage.from_(bucket).download(filepath)
-        df = pd.read_csv(io.BytesIO(response))
-        return df
+        
+        # Try different encodings
+        encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
+        
+        for encoding in encodings:
+            try:
+                df = pd.read_csv(io.BytesIO(response), encoding=encoding)
+                return df
+            except UnicodeDecodeError:
+                continue
+        
+        # If all encodings fail
+        st.error(f"❌ Could not decode {filepath} with any encoding")
+        return None
+        
     except Exception as e:
         st.error(f"Error loading {filepath}: {str(e)}")
         return None
@@ -298,7 +316,26 @@ def clean_currency_column(series):
         .fillna(0)
     )
 
-def standardize_dataframe(df):
+def find_column_fuzzy(df, candidates):
+    """
+    Find a column in the dataframe that matches any of the candidates (case-insensitive).
+    
+    Args:
+        df: DataFrame to search
+        candidates: List of possible column names
+        
+    Returns:
+        str or None: Matched column name or None
+    """
+    df_cols_lower = {col.lower(): col for col in df.columns}
+    
+    for candidate in candidates:
+        if candidate.lower() in df_cols_lower:
+            return df_cols_lower[candidate.lower()]
+    
+    return None
+
+def standardize_dataframe(df, filename=""):
     """
     Standardize column names and data types across different Toast export formats.
     
@@ -307,87 +344,79 @@ def standardize_dataframe(df):
     """
     df_processed = df.copy()
     
+    # Show what columns we found (for debugging)
+    st.write(f"      📋 Columns in `{filename}`: {', '.join(df.columns.tolist()[:10])}")
+    
     # ===== REVENUE COLUMN =====
     revenue_candidates = [
         'net_sales', 'total_price', 'net_price', 'check_total', 
-        'sales', 'amount', 'net_amount', 'total_net_sales'
+        'sales', 'amount', 'net_amount', 'total_net_sales',
+        'gross_sales', 'total', 'price', 'subtotal'
     ]
     
-    revenue_col = None
-    for col in df_processed.columns:
-        if col.lower() in revenue_candidates:
-            revenue_col = col
-            break
+    revenue_col = find_column_fuzzy(df_processed, revenue_candidates)
     
     if revenue_col:
+        st.write(f"      ✅ Found revenue column: `{revenue_col}`")
         df_processed['revenue'] = clean_currency_column(df_processed[revenue_col])
     else:
-        st.warning("⚠️ Revenue column not found. Setting revenue to 0.")
+        st.warning(f"      ⚠️ No revenue column in `{filename}`. Available: {', '.join(df.columns.tolist()[:5])}")
         df_processed['revenue'] = 0
     
     # ===== DATE COLUMN =====
     date_candidates = [
         'order_date', 'business_date', 'date', 'opened_date', 
-        'created_at', 'closed_date', 'paid_date'
+        'created_at', 'closed_date', 'paid_date', 'timestamp',
+        'datetime', 'transaction_date'
     ]
     
-    date_col = None
-    for col in df_processed.columns:
-        if col.lower() in date_candidates:
-            try:
-                df_processed['date'] = pd.to_datetime(df_processed[col], errors='coerce')
-                date_col = col
-                break
-            except:
-                continue
+    date_col = find_column_fuzzy(df_processed, date_candidates)
     
-    if not date_col:
-        st.error("❌ No valid date column found!")
+    if date_col:
+        try:
+            st.write(f"      ✅ Found date column: `{date_col}`")
+            df_processed['date'] = pd.to_datetime(df_processed[date_col], errors='coerce')
+        except:
+            st.warning(f"      ⚠️ Could not parse dates in `{date_col}`")
+            df_processed['date'] = pd.NaT
+    else:
+        st.warning(f"      ⚠️ No date column in `{filename}`")
         df_processed['date'] = pd.NaT
     
     # ===== ITEM/PRODUCT COLUMN =====
     item_candidates = [
         'item_name', 'name', 'menu_item_name', 'item', 
-        'product_name', 'menu_item', 'selection_name'
+        'product_name', 'menu_item', 'selection_name', 'description'
     ]
     
-    item_col = None
-    for col in df_processed.columns:
-        if col.lower() in item_candidates:
-            df_processed['item'] = df_processed[col].astype(str)
-            item_col = col
-            break
+    item_col = find_column_fuzzy(df_processed, item_candidates)
     
-    if not item_col:
+    if item_col:
+        df_processed['item'] = df_processed[item_col].astype(str)
+    else:
         df_processed['item'] = 'Unknown'
     
     # ===== CATEGORY COLUMN =====
     category_candidates = [
         'category', 'category_group_name', 'menu_category', 
-        'category_name', 'item_category'
+        'category_name', 'item_category', 'group'
     ]
     
-    category_col = None
-    for col in df_processed.columns:
-        if col.lower() in category_candidates:
-            df_processed['category'] = df_processed[col].astype(str)
-            category_col = col
-            break
+    category_col = find_column_fuzzy(df_processed, category_candidates)
     
-    if not category_col:
+    if category_col:
+        df_processed['category'] = df_processed[category_col].astype(str)
+    else:
         df_processed['category'] = 'Uncategorized'
     
     # ===== QUANTITY COLUMN =====
-    qty_candidates = ['quantity', 'qty', 'count', 'item_quantity']
+    qty_candidates = ['quantity', 'qty', 'count', 'item_quantity', 'units']
     
-    qty_col = None
-    for col in df_processed.columns:
-        if col.lower() in qty_candidates:
-            df_processed['quantity'] = pd.to_numeric(df_processed[col], errors='coerce').fillna(1)
-            qty_col = col
-            break
+    qty_col = find_column_fuzzy(df_processed, qty_candidates)
     
-    if not qty_col:
+    if qty_col:
+        df_processed['quantity'] = pd.to_numeric(df_processed[qty_col], errors='coerce').fillna(1)
+    else:
         df_processed['quantity'] = 1
     
     return df_processed
@@ -405,7 +434,6 @@ def enrich_dataframe(df):
     df_enriched = df_enriched[df_enriched['date'].notna()]
     
     if df_enriched.empty:
-        st.error("❌ No valid dates found in the data after cleaning!")
         return df_enriched
     
     # Time-based features
@@ -728,14 +756,6 @@ def create_weekday_weekend_comparison(df):
 def create_executive_pdf(client_name, metrics, top_items):
     """
     Generate professional executive summary PDF.
-    
-    Args:
-        client_name: Restaurant/client name
-        metrics: Dictionary of key metrics
-        top_items: DataFrame of top performing items
-        
-    Returns:
-        bytes: PDF file content
     """
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
@@ -758,7 +778,6 @@ def create_executive_pdf(client_name, metrics, top_items):
     c.setFont("Helvetica", 16)
     c.drawString(50, height - 85, f"{client_name} - Executive Summary")
     
-    # Date
     c.setFont("Helvetica", 10)
     c.setFillColor(HexColor('#818786'))
     c.drawString(50, height - 105, f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}")
@@ -808,11 +827,11 @@ def create_executive_pdf(client_name, metrics, top_items):
     total_rev = metrics.get('total_revenue', 1)
     
     for idx, row in top_items.head(10).iterrows():
-        if y_position < 100:  # Start new page if needed
+        if y_position < 100:
             c.showPage()
             y_position = height - 50
         
-        item_name = str(row['item'])[:40]  # Truncate long names
+        item_name = str(row['item'])[:40]
         revenue = row['revenue']
         percentage = (revenue / total_rev * 100) if total_rev > 0 else 0
         
@@ -828,7 +847,6 @@ def create_executive_pdf(client_name, metrics, top_items):
     c.drawString(50, 30, "HTX TAP - Track. Analyze. Profit.")
     c.drawRightString(width - 50, 30, "Confidential - For Internal Use Only")
     
-    # Save PDF
     c.save()
     buffer.seek(0)
     return buffer.getvalue()
@@ -847,11 +865,9 @@ def main():
     with st.sidebar:
         st.markdown("### ⚙️ Configuration")
         
-        # Bucket settings
         BUCKET = st.secrets.get("SUPABASE_BUCKET", "client-data")
         st.info(f"📦 **Bucket**: `{BUCKET}`")
         
-        # Client folder input
         CLIENT_FOLDER = st.text_input(
             "Client Folder Name",
             value="Melrose",
@@ -860,7 +876,6 @@ def main():
         
         st.markdown("---")
         
-        # Refresh button
         if st.button("🔄 Reload Data", use_container_width=True):
             st.cache_data.clear()
             st.cache_resource.clear()
@@ -868,7 +883,6 @@ def main():
         
         st.markdown("---")
         
-        # Info section
         st.markdown("### ℹ️ About")
         st.markdown("""
         **HTX TAP** provides comprehensive analytics for restaurant POS data.
@@ -881,7 +895,7 @@ def main():
         """)
         
         st.markdown("---")
-        st.caption("v2.1 | © HTX TAP")
+        st.caption("v2.2 | © HTX TAP")
     
     # ===== MAIN HEADER =====
     st.title(f"🍞 {CLIENT_FOLDER} Analytics Dashboard")
@@ -890,7 +904,6 @@ def main():
     
     # ===== DATA LOADING =====
     with st.status("🔍 Loading data from Supabase...", expanded=True) as status:
-        # Get file list
         files = get_files_from_supabase(client, BUCKET, CLIENT_FOLDER)
         
         if not files:
@@ -919,7 +932,6 @@ def main():
         for file in files:
             filename = file['name']
             
-            # Build filepath
             if filename.startswith(CLIENT_FOLDER):
                 filepath = filename
             else:
@@ -930,27 +942,47 @@ def main():
             df = load_csv_from_supabase(client, BUCKET, filepath)
             
             if df is not None and not df.empty:
-                df = standardize_dataframe(df)
+                df = standardize_dataframe(df, filename)
                 dataframes.append(df)
             else:
                 st.warning(f"   ⚠️ Skipped `{filename}` (empty or error)")
         
         if not dataframes:
             status.update(label="❌ No valid data loaded", state="error")
-            st.error("All files failed to load or were empty.")
+            st.error("""
+            **All files failed to load or were empty.**
+            
+            This usually means:
+            - Your CSV files don't have recognizable column names for dates/revenue
+            - The files are in an unsupported format
+            
+            **Please share a sample of your CSV columns so I can help!**
+            """)
             st.stop()
         
-        # Merge all dataframes
         status.update(label="🔗 Merging datasets...", state="running")
         combined_df = pd.concat(dataframes, ignore_index=True)
         
-        # Enrich data
         status.update(label="🎯 Enriching data...", state="running")
         processed_df = enrich_dataframe(combined_df)
         
         if processed_df.empty:
             status.update(label="❌ No valid data after processing", state="error")
-            st.error("No valid data found after cleaning. Check your CSV files for valid dates and revenue.")
+            st.error("""
+            **No valid data found after cleaning.**
+            
+            Your CSV files were loaded, but they don't contain:
+            - Valid date columns (tried: order_date, business_date, date, etc.)
+            - Valid revenue columns (tried: net_sales, total_price, sales, etc.)
+            
+            **Next Step**: Please download one of your CSV files and show me the column names.
+            I can then update the app to recognize your specific format!
+            """)
+            
+            # Show what we loaded for debugging
+            with st.expander("🔍 Show Raw Data (First 100 rows)"):
+                st.dataframe(combined_df.head(100))
+            
             st.stop()
         
         status.update(
@@ -965,9 +997,7 @@ def main():
     filter_col1, filter_col2, filter_col3 = st.columns([2, 2, 1])
     
     with filter_col1:
-        # FIXED: Properly handle date filtering with NaT protection
         if 'date' in processed_df.columns:
-            # Get valid dates only
             valid_dates = processed_df['date'].dropna()
             
             if len(valid_dates) > 0:
@@ -992,7 +1022,6 @@ def main():
                 else:
                     df_filtered = processed_df.copy()
             else:
-                st.error("No valid dates found in data.")
                 df_filtered = processed_df.copy()
         else:
             df_filtered = processed_df.copy()
@@ -1022,7 +1051,6 @@ def main():
     
     st.markdown("---")
     
-    # Check if data exists after filtering
     if df_filtered.empty:
         st.warning("⚠️ No data available with current filters. Please adjust your selection.")
         st.stop()
@@ -1034,12 +1062,11 @@ def main():
     avg_order_value = total_revenue / total_transactions if total_transactions > 0 else 0
     unique_items = df_filtered['item'].nunique()
     
-    # Calculate period-over-period growth (if applicable)
     revenue_growth = 0
     if 'date' in df_filtered.columns and len(df_filtered) > 1:
         try:
             date_range_days = (df_filtered['date'].max() - df_filtered['date'].min()).days
-            if date_range_days >= 14:  # At least 2 weeks of data
+            if date_range_days >= 14:
                 midpoint = df_filtered['date'].min() + timedelta(days=date_range_days // 2)
                 first_half_revenue = df_filtered[df_filtered['date'] < midpoint]['revenue'].sum()
                 second_half_revenue = df_filtered[df_filtered['date'] >= midpoint]['revenue'].sum()
@@ -1049,7 +1076,6 @@ def main():
         except:
             revenue_growth = 0
     
-    # Display metrics
     kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
     
     with kpi1:
@@ -1086,8 +1112,6 @@ def main():
     st.markdown("---")
     
     # ===== VISUALIZATIONS =====
-    
-    # Row 1: Revenue Trend & Top Items
     viz_row1_col1, viz_row1_col2 = st.columns(2)
     
     with viz_row1_col1:
@@ -1102,7 +1126,6 @@ def main():
             use_container_width=True
         )
     
-    # Row 2: Heatmap & Category Pie
     viz_row2_col1, viz_row2_col2 = st.columns(2)
     
     with viz_row2_col1:
@@ -1117,7 +1140,6 @@ def main():
             use_container_width=True
         )
     
-    # Row 3: Meal Period & Weekday/Weekend
     viz_row3_col1, viz_row3_col2 = st.columns(2)
     
     with viz_row3_col1:
@@ -1152,7 +1174,6 @@ def main():
     export_col1, export_col2 = st.columns(2)
     
     with export_col1:
-        # Prepare metrics for PDF
         try:
             date_range_str = f"{df_filtered['date'].min().strftime('%m/%d/%Y')} - {df_filtered['date'].max().strftime('%m/%d/%Y')}"
         except:
@@ -1203,10 +1224,6 @@ def main():
         <p style='margin: 0; font-size: 0.9em;'>Track. Analyze. Profit.</p>
     </div>
     """, unsafe_allow_html=True)
-
-# =========================================================
-# RUN APPLICATION
-# =========================================================
 
 if __name__ == "__main__":
     main()
