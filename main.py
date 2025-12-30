@@ -113,7 +113,17 @@ async def run_analysis(request: RunRequest):
         folder = get_client_folder(request.clientId)
         
         # Get Supabase client
-        supabase = get_supabase_client()
+        try:
+            supabase = get_supabase_client()
+        except ValueError as e:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": str(e),
+                    "hint": "Check that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are set"
+                }
+            )
+        
         bucket = os.getenv("SUPABASE_BUCKET", "client-data")
         
         # Extract params
@@ -121,17 +131,30 @@ async def run_analysis(request: RunRequest):
         report_period = request.params.get("report_period")
         
         # Run analysis
-        results = run_full_analysis(
-            supabase,
-            bucket,
-            folder,
-            upload_to_db=upload_to_db,
-            report_period=report_period
-        )
+        try:
+            results = run_full_analysis(
+                supabase,
+                bucket,
+                folder,
+                upload_to_db=upload_to_db,
+                report_period=report_period
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": f"Analysis execution failed: {str(e)}",
+                    "hint": "Check that CSV files exist in Supabase Storage folder and data format is correct"
+                }
+            )
         
         # Check for errors
         if isinstance(results, dict) and "error" in results:
-            raise HTTPException(status_code=400, detail=results["error"])
+            raise HTTPException(
+                status_code=400,
+                detail=results["error"],
+                hint="Verify that sales data CSV files exist in the client folder"
+            )
         
         # Serialize results
         serialized = serialize_for_json(results)
@@ -172,21 +195,31 @@ async def run_analysis(request: RunRequest):
         
         return {
             "clientId": request.clientId,
+            "folder": folder,
             "generatedAt": datetime.utcnow().isoformat(),
             "kpis": kpis,
             "charts": charts,
             "tables": tables,
-            "executionTimeSeconds": round(execution_time, 2),
-            "rawResults": serialized  # Include full results for advanced use
+            "executionTimeSeconds": round(execution_time, 2)
         }
         
+    except HTTPException:
+        raise
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": str(e),
+                "hint": "clientId must be one of: melrose, bestregard, fancy"
+            }
+        )
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Analysis failed: {str(e)}",
-            hint="Check that Supabase credentials are correct and client folder exists"
+            detail={
+                "error": f"Unexpected error: {str(e)}",
+                "hint": "Check Railway logs for detailed error information"
+            }
         )
 
 if __name__ == "__main__":
