@@ -1,0 +1,85 @@
+# Streamlit secrets and config (IMPORTANT - keeps your API keys safe!)
+.streamlit/
+.streamlit/secrets.toml
+
+# Python cache files
+*.pyc
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+temp/
+tmp/
+
+# OS files
+Thumbs.db
+.DS_Store
+```
+
+---
+
+## 📝 How to Use This File:
+
+1. **Create the file** in your project root directory (same level as `app.py`)
+2. **Name it exactly**: `.gitignore` (with the dot at the beginning)
+3. **Save it** before you run `git add .`
+
+---
+
+## 🎯 What This Does:
+
+- **`.streamlit/`** - Prevents your Supabase credentials from being uploaded to GitHub (CRITICAL!)
+- **`*.pyc` & `__pycache__/`** - Ignores Python compiled files
+- **`.env`** - Protects environment variables
+- **`venv/`** - Ignores virtual environment folders
+- **`.vscode/` & `.idea/`** - Ignores IDE settings
+
+---
+
+## ✅ Your Complete File Structure:
+```
+toast-analytics-dashboard/
+├── app.py                    # Main application
+├── requirements.txt          # Dependencies
+├── .gitignore               # This file (tells Git what to ignore)
+├── README.md                # Optional: project documentation
+└── .streamlit/              # This folder will NOT be uploaded to GitHub
+    └── secrets.toml         # Your local secrets (stays on your computer)
