@@ -1317,6 +1317,445 @@ def main():
             use_container_width=True
         )
     
+    # =========================================================
+    # PROFIT ENGINES SECTION (7 NEW VISUALIZATIONS)
+    # =========================================================
+    st.markdown("---")
+    st.markdown("## 🚀 Profit Engines")
+    st.markdown("**Advanced profit optimization analytics**")
+    
+    # Prepare dataframes for Profit Engines
+    # Map standardized columns to expected column names
+    sales_df = df_filtered.copy()
+    
+    # Column mapping for Profit Engines
+    column_mapping = {
+        'revenue': 'Net Price',
+        'item': 'Menu Item',
+        'date': 'Order Date',
+        'server': 'Server',
+        'category': 'Menu Group',
+        'quantity': 'Qty'
+    }
+    
+    # Rename columns if they exist
+    for old_col, new_col in column_mapping.items():
+        if old_col in sales_df.columns and new_col not in sales_df.columns:
+            sales_df[new_col] = sales_df[old_col]
+    
+    # Ensure Order Id exists (use Check Id or create index)
+    if 'Order Id' not in sales_df.columns:
+        if 'check_id' in sales_df.columns:
+            sales_df['Order Id'] = sales_df['check_id']
+        elif 'order_id' in sales_df.columns:
+            sales_df['Order Id'] = sales_df['order_id']
+        else:
+            sales_df['Order Id'] = sales_df.index.astype(str)
+    
+    # Load separate dataframes for voids and discounts
+    voids_df = pd.DataFrame()
+    discounts_df = pd.DataFrame()
+    labor_df = pd.DataFrame()
+    
+    # Try to load voids, discounts, and labor from files
+    for file in files:
+        filename = file['name'].lower()
+        filepath = f"{CLIENT_FOLDER}/{file['name']}" if CLIENT_FOLDER else file['name']
+        
+        if 'void' in filename and voids_df.empty:
+            df_void = load_csv_from_supabase(client, BUCKET, filepath)
+            if df_void is not None and not df_void.empty:
+                voids_df = df_void.copy()
+                # Map void columns
+                if 'Total Price' not in voids_df.columns:
+                    price_col = find_column_fuzzy(voids_df, ['Total Price', 'total_price', 'Amount', 'amount'])
+                    if price_col:
+                        voids_df['Total Price'] = voids_df[price_col]
+                if 'Reason' not in voids_df.columns:
+                    reason_col = find_column_fuzzy(voids_df, ['Reason', 'reason', 'Void Reason', 'void_reason', 'Comment', 'comment'])
+                    if reason_col:
+                        voids_df['Reason'] = voids_df[reason_col]
+                    else:
+                        voids_df['Reason'] = 'Unknown'
+        
+        if 'discount' in filename and discounts_df.empty:
+            df_disc = load_csv_from_supabase(client, BUCKET, filepath)
+            if df_disc is not None and not df_disc.empty:
+                discounts_df = df_disc.copy()
+        
+        if 'labor' in filename and labor_df.empty:
+            df_lab = load_csv_from_supabase(client, BUCKET, filepath)
+            if df_lab is not None and not df_lab.empty:
+                labor_df = df_lab.copy()
+    
+    # ENGINE 1: The Server Friction Coefficient ("Hustle" Index)
+    st.markdown("---")
+    st.header("1. Server Friction Coefficient (The Hustle Index)")
+    st.markdown("*Detects who is grinding (high transactions) vs. cherry-picking (high sales, low work).*")
+    
+    if 'Server' in sales_df.columns and 'Net Price' in sales_df.columns and 'Order Id' in sales_df.columns:
+        server_stats = sales_df.groupby('Server').agg(
+            Total_Sales=('Net Price', 'sum'),
+            Transactions=('Order Id', 'nunique')
+        ).reset_index()
+        
+        # Calculate Friction: Transactions per $1000 in Sales
+        server_stats['Hustle_Score'] = (server_stats['Transactions'] / (server_stats['Total_Sales'] + 0.01)) * 1000
+        server_stats = server_stats[server_stats['Total_Sales'] > 1000]  # Filter active servers
+        
+        if not server_stats.empty:
+            fig_hustle = px.scatter(
+                server_stats,
+                x="Transactions",
+                y="Total_Sales",
+                text="Server",
+                size="Hustle_Score",
+                color="Hustle_Score",
+                color_continuous_scale="RdYlGn",
+                title="Revenue vs. Effort (Bubble Size = Hustle Score)",
+                template="plotly_dark"
+            )
+            fig_hustle.update_traces(
+                textposition='top center',
+                marker=dict(line=dict(color='#CDB082', width=1))
+            )
+            fig_hustle.update_layout(
+                plot_bgcolor='#0E1117',
+                paper_bgcolor='#0E1117',
+                font=dict(color='#CDB082', size=12),
+                xaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)'),
+                yaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)')
+            )
+            st.plotly_chart(fig_hustle, use_container_width=True)
+        else:
+            st.info("Not enough server data to calculate hustle scores.")
+    else:
+        st.warning("Missing required columns (Server, Net Price, Order Id) for Hustle Index.")
+    
+    # ENGINE 2: The Menu Engineering Matrix ("Stars & Dogs")
+    st.markdown("---")
+    st.header("2. Menu Engineering Matrix (Stars vs. Dogs)")
+    st.markdown("*Upper Right: Keep (Stars). Bottom Left: 86 Immediately (Dogs).*")
+    
+    if 'Menu Item' in sales_df.columns and 'Qty' in sales_df.columns and 'Net Price' in sales_df.columns:
+        menu_stats = sales_df.groupby('Menu Item').agg(
+            Qty_Sold=('Qty', 'sum'),
+            Total_Revenue=('Net Price', 'sum')
+        ).reset_index()
+        
+        menu_stats = menu_stats[menu_stats['Qty_Sold'] > 10]
+        
+        if not menu_stats.empty:
+            avg_qty = menu_stats['Qty_Sold'].mean()
+            avg_rev = menu_stats['Total_Revenue'].mean()
+            
+            def classify_item(row):
+                if row['Qty_Sold'] >= avg_qty and row['Total_Revenue'] >= avg_rev:
+                    return "⭐ STAR"
+                elif row['Qty_Sold'] < avg_qty and row['Total_Revenue'] < avg_rev:
+                    return "🐕 DOG"
+                elif row['Qty_Sold'] >= avg_qty and row['Total_Revenue'] < avg_rev:
+                    return "🐎 PLOWHORSE"
+                else:
+                    return "❓ PUZZLE"
+            
+            menu_stats['Class'] = menu_stats.apply(classify_item, axis=1)
+            
+            fig_menu = px.scatter(
+                menu_stats,
+                x="Qty_Sold",
+                y="Total_Revenue",
+                color="Class",
+                hover_name="Menu Item",
+                color_discrete_map={"⭐ STAR": "#FFD700", "🐕 DOG": "#EF553B", "🐎 PLOWHORSE": "#00CC96", "❓ PUZZLE": "#AB63FA"},
+                title="Profitability vs. Popularity",
+                template="plotly_dark"
+            )
+            fig_menu.add_hline(y=avg_rev, line_dash="dash", line_color="#CDB082", annotation_text="Avg Revenue")
+            fig_menu.add_vline(x=avg_qty, line_dash="dash", line_color="#CDB082", annotation_text="Avg Qty")
+            fig_menu.update_layout(
+                plot_bgcolor='#0E1117',
+                paper_bgcolor='#0E1117',
+                font=dict(color='#CDB082', size=12),
+                xaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)'),
+                yaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)')
+            )
+            st.plotly_chart(fig_menu, use_container_width=True)
+        else:
+            st.info("Not enough menu item data for analysis.")
+    else:
+        st.warning("Missing required columns (Menu Item, Qty, Net Price) for Menu Engineering Matrix.")
+    
+    # ENGINE 3: Labor-to-Revenue Sync ("Ghost Shift" Detector)
+    st.markdown("---")
+    st.header("3. Labor-to-Revenue Sync (The Ghost Shift Detector)")
+    st.markdown("*Overlaid: Revenue (Bars) vs. Active Staffing (Line). Detects overstaffing.*")
+    
+    if 'Order Date' in sales_df.columns and 'Net Price' in sales_df.columns and 'Server' in sales_df.columns:
+        # Ensure Hour and Date columns exist
+        if 'Hour' not in sales_df.columns:
+            sales_df['Hour'] = pd.to_datetime(sales_df['Order Date'], errors='coerce').dt.hour
+        if 'Date' not in sales_df.columns:
+            sales_df['Date'] = pd.to_datetime(sales_df['Order Date'], errors='coerce').dt.date
+        
+        # Remove rows with invalid dates
+        sales_df_clean = sales_df.dropna(subset=['Hour', 'Date'])
+        
+        if not sales_df_clean.empty:
+            staff_activity = sales_df_clean.groupby(['Date', 'Hour'])['Server'].nunique().reset_index()
+            staff_activity = staff_activity.groupby('Hour')['Server'].mean().reset_index()  # Avg staff per hour
+            hourly_rev_trend = sales_df_clean.groupby('Hour')['Net Price'].mean().reset_index()
+            
+            fig_labor = make_subplots(specs=[[{"secondary_y": True}]])
+            fig_labor.add_trace(
+                go.Bar(
+                    x=hourly_rev_trend['Hour'],
+                    y=hourly_rev_trend['Net Price'],
+                    name="Avg Revenue",
+                    marker_color='#CDB082'
+                ),
+                secondary_y=False
+            )
+            fig_labor.add_trace(
+                go.Scatter(
+                    x=staff_activity['Hour'],
+                    y=staff_activity['Server'],
+                    name="Active Servers",
+                    line=dict(color='#EF553B', width=3)
+                ),
+                secondary_y=True
+            )
+            fig_labor.update_layout(
+                title="Revenue vs. Active Staffing",
+                template="plotly_dark",
+                hovermode="x unified",
+                plot_bgcolor='#0E1117',
+                paper_bgcolor='#0E1117',
+                font=dict(color='#CDB082', size=12),
+                xaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)'),
+                yaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)', title="Revenue ($)"),
+                yaxis2=dict(gridcolor='rgba(205, 176, 130, 0.1)', title="Active Servers")
+            )
+            st.plotly_chart(fig_labor, use_container_width=True)
+        else:
+            st.info("Not enough date/time data for labor analysis.")
+    else:
+        st.warning("Missing required columns for Labor-to-Revenue Sync.")
+    
+    # ENGINE 4: Void Forensics Report
+    st.markdown("---")
+    st.header("4. Void Forensics Report")
+    
+    if not voids_df.empty and 'Total Price' in voids_df.columns:
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            if 'Reason' in voids_df.columns:
+                void_reasons = voids_df.groupby('Reason')['Total Price'].sum().reset_index().sort_values('Total Price', ascending=False).head(10)
+                if not void_reasons.empty:
+                    fig_voids = px.bar(
+                        void_reasons,
+                        y='Reason',
+                        x='Total Price',
+                        orientation='h',
+                        title="Top Reasons for Voids ($)",
+                        template="plotly_dark",
+                        color='Total Price',
+                        color_continuous_scale='Reds'
+                    )
+                    fig_voids.update_layout(
+                        plot_bgcolor='#0E1117',
+                        paper_bgcolor='#0E1117',
+                        font=dict(color='#CDB082', size=12),
+                        xaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)'),
+                        yaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)')
+                    )
+                    st.plotly_chart(fig_voids, use_container_width=True)
+                else:
+                    st.info("No void reasons data available.")
+            else:
+                st.info("Reason column not found in voids data.")
+        
+        with col_v2:
+            if 'Reason' in voids_df.columns:
+                def categorize_void(reason):
+                    r = str(reason).lower()
+                    if any(x in r for x in ['86', 'kitchen', 'quality', 'waste', 'spill']):
+                        return 'Kitchen/Ops'
+                    if any(x in r for x in ['server', 'entry', 'guest', 'change', 'comp']):
+                        return 'FOH/Server'
+                    return 'Other'
+                
+                voids_df['Source'] = voids_df['Reason'].apply(categorize_void)
+                fig_source = px.pie(
+                    voids_df,
+                    values='Total Price',
+                    names='Source',
+                    title="Void Source: Kitchen vs FOH",
+                    template="plotly_dark",
+                    color_discrete_map={
+                        'Kitchen/Ops': '#EF553B',
+                        'FOH/Server': '#FFD700',
+                        'Other': '#8E8E93'
+                    }
+                )
+                fig_source.update_layout(
+                    plot_bgcolor='#0E1117',
+                    paper_bgcolor='#0E1117',
+                    font=dict(color='#CDB082', size=12)
+                )
+                st.plotly_chart(fig_source, use_container_width=True)
+            else:
+                st.info("Reason column not found in voids data.")
+    else:
+        st.info("No voids data available. Upload a voids CSV file to see this analysis.")
+    
+    # ENGINE 5: Upsell Velocity Tracker
+    st.markdown("---")
+    st.header("5. Upsell Velocity Tracker")
+    
+    # Ensure Categories exist
+    if 'Category' not in sales_df.columns:
+        if 'Menu Group' in sales_df.columns:
+            def categorize_group(g):
+                g_str = str(g).lower()
+                if any(x in g_str for x in ['liquor', 'wine', 'beer', 'cocktail']):
+                    return 'Alcohol'
+                if any(x in g_str for x in ['food', 'entree', 'appetizer']):
+                    return 'Food'
+                return 'Other'
+            sales_df['Category'] = sales_df['Menu Group'].apply(categorize_group)
+        elif 'category' in sales_df.columns:
+            def categorize_group(g):
+                g_str = str(g).lower()
+                if any(x in g_str for x in ['liquor', 'wine', 'beer', 'cocktail']):
+                    return 'Alcohol'
+                if any(x in g_str for x in ['food', 'entree', 'appetizer']):
+                    return 'Food'
+                return 'Other'
+            sales_df['Category'] = sales_df['category'].apply(categorize_group)
+        else:
+            sales_df['Category'] = 'Other'
+    
+    if 'Order Id' in sales_df.columns and 'Server' in sales_df.columns and 'Category' in sales_df.columns:
+        check_summary = sales_df.groupby(['Order Id', 'Server']).agg(
+            Has_Food=('Category', lambda x: 'Food' in list(x)),
+            Has_Alcohol=('Category', lambda x: 'Alcohol' in list(x))
+        ).reset_index()
+        
+        food_checks = check_summary[check_summary['Has_Food'] == True]
+        
+        if not food_checks.empty:
+            upsell_stats = food_checks.groupby('Server').agg(
+                Total_Food_Tables=('Order Id', 'nunique'),
+                Tables_With_Alc=('Has_Alcohol', 'sum')
+            ).reset_index()
+            upsell_stats['Attachment_Rate'] = (upsell_stats['Tables_With_Alc'] / upsell_stats['Total_Food_Tables']) * 100
+            upsell_stats = upsell_stats[upsell_stats['Total_Food_Tables'] > 20]
+            
+            if not upsell_stats.empty:
+                fig_upsell = px.bar(
+                    upsell_stats.sort_values('Attachment_Rate'),
+                    x='Attachment_Rate',
+                    y='Server',
+                    orientation='h',
+                    title="Alcohol Attachment Rate %",
+                    template="plotly_dark",
+                    color='Attachment_Rate',
+                    color_continuous_scale='Greens'
+                )
+                fig_upsell.update_layout(
+                    plot_bgcolor='#0E1117',
+                    paper_bgcolor='#0E1117',
+                    font=dict(color='#CDB082', size=12),
+                    xaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)'),
+                    yaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)')
+                )
+                st.plotly_chart(fig_upsell, use_container_width=True)
+            else:
+                st.info("Not enough food table data (need >20 tables per server) for upsell analysis.")
+        else:
+            st.info("No food orders found for upsell analysis.")
+    else:
+        st.warning("Missing required columns for Upsell Velocity Tracker.")
+    
+    # ENGINE 6: Peak Hour Throughput Heatmap
+    st.markdown("---")
+    st.header("6. Peak Hour Throughput Heatmap")
+    
+    if 'Order Date' in sales_df.columns and 'Net Price' in sales_df.columns:
+        if 'DayOfWeek' not in sales_df.columns:
+            sales_df['DayOfWeek'] = pd.to_datetime(sales_df['Order Date'], errors='coerce').dt.day_name()
+        if 'Hour' not in sales_df.columns:
+            sales_df['Hour'] = pd.to_datetime(sales_df['Order Date'], errors='coerce').dt.hour
+        
+        sales_df_clean = sales_df.dropna(subset=['DayOfWeek', 'Hour'])
+        
+        if not sales_df_clean.empty:
+            heatmap_data = sales_df_clean.groupby(['DayOfWeek', 'Hour'])['Net Price'].sum().reset_index()
+            days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            
+            fig_heat = px.density_heatmap(
+                heatmap_data,
+                x='Hour',
+                y='DayOfWeek',
+                z='Net Price',
+                title="Revenue Intensity Heatmap",
+                color_continuous_scale=['#0E1117', '#CDB082'],
+                category_orders={'DayOfWeek': days_order},
+                template="plotly_dark"
+            )
+            fig_heat.update_layout(
+                plot_bgcolor='#0E1117',
+                paper_bgcolor='#0E1117',
+                font=dict(color='#CDB082', size=12)
+            )
+            st.plotly_chart(fig_heat, use_container_width=True)
+        else:
+            st.info("Not enough date/time data for heatmap.")
+    else:
+        st.warning("Missing required columns for Peak Hour Heatmap.")
+    
+    # ENGINE 7: CLV Predictor ("Whale" Hunter)
+    st.markdown("---")
+    st.header("7. CLV Predictor (The Whale Hunter)")
+    
+    # Check for Tab Name or similar column
+    tab_name_col = None
+    for col in sales_df.columns:
+        if 'tab' in col.lower() or 'guest' in col.lower() or 'customer' in col.lower():
+            tab_name_col = col
+            break
+    
+    if tab_name_col:
+        guest_stats = sales_df.groupby(tab_name_col).agg(
+            Total_Spend=('Net Price', 'sum')
+        ).reset_index().sort_values('Total_Spend', ascending=False).head(10)
+        
+        if not guest_stats.empty:
+            fig_clv = px.bar(
+                guest_stats,
+                x='Total_Spend',
+                y=tab_name_col,
+                orientation='h',
+                title="Top 10 Guests by Lifetime Value",
+                template="plotly_dark",
+                color='Total_Spend',
+                color_continuous_scale='Blues'
+            )
+            fig_clv.update_yaxes(autorange="reversed")
+            fig_clv.update_layout(
+                plot_bgcolor='#0E1117',
+                paper_bgcolor='#0E1117',
+                font=dict(color='#CDB082', size=12),
+                xaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)'),
+                yaxis=dict(gridcolor='rgba(205, 176, 130, 0.2)')
+            )
+            st.plotly_chart(fig_clv, use_container_width=True)
+        else:
+            st.info("No guest data available for CLV analysis.")
+    else:
+        st.info("No 'Tab Name' or guest identifier column found. This analysis requires customer tracking data.")
+    
     # ===== ADVANCED ANALYTICS SECTION =====
     st.markdown("---")
     st.markdown("## 🔬 Advanced Analytics Suite")
