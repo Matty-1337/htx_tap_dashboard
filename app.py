@@ -396,6 +396,15 @@ def standardize_dataframe(df, filename=""):
     
     revenue_col = find_column_fuzzy(df_processed, revenue_candidates)
     
+    # Check if this file type doesn't need revenue column
+    discount_files = ['discount', 'discounts']
+    analytics_output_files = ['bottle_conversion', 'waste_efficiency', 'menu_volatility', 
+                             'discount_analysis', 'food_attachment', 'hourly_analysis', 
+                             'dow_analysis']
+    is_discount_file = any(discount_name in filename.lower() for discount_name in discount_files)
+    is_analytics_output = any(analytics_name in filename.lower() for analytics_name in analytics_output_files)
+    files_without_revenue = is_discount_file or is_analytics_output
+    
     if revenue_col:
         st.write(f"      ✅ Found revenue column: `{revenue_col}`")
         # If column is already named "Revenue", it's likely already numeric (from analytics outputs)
@@ -404,9 +413,10 @@ def standardize_dataframe(df, filename=""):
         else:
             df_processed['revenue'] = clean_currency_column(df_processed[revenue_col])
     else:
-        # Show more columns in warning for debugging
-        available_cols = ', '.join(df.columns.tolist()[:10])
-        st.warning(f"      ⚠️ No revenue column in `{filename}`. Available: {available_cols}")
+        # Only show warning if this file type should have revenue
+        if not files_without_revenue:
+            available_cols = ', '.join(df.columns.tolist()[:10])
+            st.warning(f"      ⚠️ No revenue column in `{filename}`. Available: {available_cols}")
         df_processed['revenue'] = 0
     
     # ===== DATE COLUMN =====
@@ -429,11 +439,14 @@ def standardize_dataframe(df, filename=""):
     
     date_col = find_column_fuzzy(df_processed, date_candidates)
     
-    # Check if this is an analytics output file (doesn't need date column)
+    # Check if this file type doesn't need date column
     analytics_output_files = ['bottle_conversion', 'waste_efficiency', 'menu_volatility', 
                              'discount_analysis', 'food_attachment', 'hourly_analysis', 
-                             'dow_analysis', 'discount_analysis']
+                             'dow_analysis']
+    labor_files = ['labor', 'labor hours']
     is_analytics_output = any(analytics_name in filename.lower() for analytics_name in analytics_output_files)
+    is_labor_file = any(labor_name in filename.lower() for labor_name in labor_files)
+    files_without_dates = is_analytics_output or is_labor_file
     
     if date_col:
         try:
@@ -443,8 +456,8 @@ def standardize_dataframe(df, filename=""):
             st.warning(f"      ⚠️ Could not parse dates in `{date_col}`")
             df_processed['date'] = pd.NaT
     else:
-        if is_analytics_output:
-            # Analytics output files don't need date columns - this is expected
+        if files_without_dates:
+            # These file types don't need date columns - this is expected
             df_processed['date'] = pd.NaT
         else:
             st.warning(f"      ⚠️ No date column in `{filename}`")
