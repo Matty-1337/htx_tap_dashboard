@@ -119,9 +119,11 @@ async def test_supabase():
         
         # Validate env vars
         if not url:
-            return {"ok": False, "error": "SUPABASE_URL is not set"}
+            return {"ok": False, "error": "SUPABASE_URL is not set", "url_set": bool(url)}
         if not key:
-            return {"ok": False, "error": "SUPABASE_SERVICE_ROLE_KEY is not set"}
+            return {"ok": False, "error": "SUPABASE_SERVICE_ROLE_KEY is not set", "key_set": bool(key)}
+        if not bucket:
+            return {"ok": False, "error": "SUPABASE_BUCKET is not set", "bucket_set": bool(bucket)}
         
         # Check key format (should be a JWT with 3 parts separated by dots)
         key_parts = key.split('.')
@@ -131,6 +133,15 @@ async def test_supabase():
                 "error": f"Invalid key format: expected JWT with 3 parts, got {len(key_parts)} parts",
                 "key_preview": key[:20] + "..." if len(key) > 20 else key
             }
+        
+        # Debug info
+        debug_info = {
+            "url_length": len(url),
+            "key_length": len(key),
+            "bucket": bucket,
+            "bucket_length": len(bucket),
+            "url_preview": url[:30] + "..." if len(url) > 30 else url
+        }
         
         supabase = get_supabase_client()
         # Try to list files in Melrose folder
@@ -142,7 +153,8 @@ async def test_supabase():
             "bucket": bucket,
             "folder": folder,
             "file_count": len(files) if files else 0,
-            "files": files[:5] if files else []  # First 5 files
+            "files": files[:5] if files else [],  # First 5 files
+            "debug": debug_info
         }
     except Exception as e:
         import traceback
