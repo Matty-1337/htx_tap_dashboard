@@ -142,11 +142,14 @@ async def run_analysis(request: RunRequest):
                 report_period=report_period
             )
         except Exception as e:
+            import traceback
+            error_trace = traceback.format_exc()
             raise HTTPException(
                 status_code=500,
                 detail={
                     "error": f"Analysis execution failed: {str(e)}",
-                    "hint": "Check that CSV files exist in Supabase Storage folder and data format is correct"
+                    "hint": "Check that CSV files exist in Supabase Storage folder and data format is correct",
+                    "detail": error_trace[-500:] if len(error_trace) > 500 else error_trace  # Last 500 chars of traceback
                 }
             )
         
