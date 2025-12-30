@@ -141,21 +141,18 @@ async def run_analysis(request: RunRequest):
         except Exception as e:
             import traceback
             error_trace = traceback.format_exc()
+            error_msg = str(e)
+            # Return error as string to ensure it's serializable
             raise HTTPException(
                 status_code=500,
-                detail={
-                    "error": f"Analysis execution failed: {str(e)}",
-                    "hint": "Check that CSV files exist in Supabase Storage folder and data format is correct",
-                    "detail": error_trace[-500:] if len(error_trace) > 500 else error_trace  # Last 500 chars of traceback
-                }
+                detail=f"Analysis execution failed: {error_msg}. Hint: Check that CSV files exist in Supabase Storage folder and data format is correct. Traceback: {error_trace[-300:]}"
             )
         
         # Check for errors
         if isinstance(results, dict) and "error" in results:
             raise HTTPException(
                 status_code=400,
-                detail=results["error"],
-                hint="Verify that sales data CSV files exist in the client folder"
+                detail=f"{results['error']}. Hint: Verify that sales data CSV files exist in the client folder"
             )
         
         # Serialize results
@@ -207,15 +204,11 @@ async def run_analysis(request: RunRequest):
         
     except HTTPException:
         raise
-    except HTTPException:
-        raise
     except ValueError as e:
         raise HTTPException(
             status_code=400,
             detail=f"{str(e)}. Hint: clientId must be one of: melrose, bestregard, fancy"
         )
-    except HTTPException:
-        raise
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
