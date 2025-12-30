@@ -105,6 +105,31 @@ async def health_check():
     """Health check endpoint"""
     return {"ok": True, "timestamp": datetime.utcnow().isoformat()}
 
+@app.get("/test-supabase")
+async def test_supabase():
+    """Test Supabase connection"""
+    try:
+        supabase = get_supabase_client()
+        bucket = os.getenv("SUPABASE_BUCKET", "client-data")
+        # Try to list files in Melrose folder
+        folder = "Melrose"
+        files = supabase.storage.from_(bucket).list(folder)
+        return {
+            "ok": True,
+            "supabase_connected": True,
+            "bucket": bucket,
+            "folder": folder,
+            "file_count": len(files) if files else 0,
+            "files": files[:5] if files else []  # First 5 files
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()[-500:]
+        }
+
 @app.post("/run")
 async def run_analysis(request: RunRequest):
     """Run full analysis for a client"""
