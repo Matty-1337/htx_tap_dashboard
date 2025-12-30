@@ -55,6 +55,10 @@ def get_supabase_client():
     if not url or not key:
         raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
     
+    # Strip quotes if present (Railway sometimes adds quotes to env vars)
+    url = url.strip('"\'')
+    key = key.strip('"\'')
+    
     return create_client(url, key)
 
 def get_client_folder(client_id: str) -> str:
