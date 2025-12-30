@@ -19,6 +19,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
 from htx_tap_analytics import run_full_analysis
+import executive_dashboard as ed
 
 # =========================================================
 # PAGE CONFIGURATION
@@ -2034,6 +2035,187 @@ def main():
                 st.dataframe(discount_df, use_container_width=True)
             else:
                 st.info("No discount data available. Run analytics first.")
+    
+    # =========================================================
+    # EXECUTIVE DASHBOARD SECTION (Server Performance Analytics)
+    # =========================================================
+    st.markdown("---")
+    st.markdown("## 👔 Executive Dashboard")
+    st.markdown("**Server performance metrics and analytics**")
+    
+    # Prepare data for executive dashboard
+    exec_df = df_filtered.copy()
+    
+    # Apply executive dashboard processing
+    exec_df = ed.calculate_revenue(exec_df)
+    exec_df = ed.apply_business_day_logic(exec_df)
+    exec_df, void_count = ed.process_void_column(exec_df)
+    
+    # Calculate shift metrics
+    shift_metrics = ed.calculate_shift_metrics(exec_df)
+    
+    # Calculate server metrics (the main performance data)
+    server_metrics = ed.calculate_server_metrics(exec_df, shift_metrics)
+    
+    if not server_metrics.empty:
+        # Display Server Performance Table
+        st.markdown("### 📊 Server Performance Metrics")
+        st.markdown("*Sales per hour, hustle scores, void rates, and performance grades*")
+        
+        # Format the metrics for display
+        display_metrics = server_metrics.copy()
+        display_metrics['Total_Sales'] = display_metrics['Total_Sales'].apply(lambda x: f"${x:,.2f}")
+        display_metrics['Sales_Per_Hour'] = display_metrics['Sales_Per_Hour'].apply(lambda x: f"${x:,.2f}")
+        display_metrics['Hustle_Score'] = display_metrics['Hustle_Score'].apply(lambda x: f"{x:.2f}")
+        display_metrics['Void_Rate'] = display_metrics['Void_Rate'].apply(lambda x: f"{x:.2f}%")
+        display_metrics['True_Retention'] = display_metrics['True_Retention'].apply(lambda x: f"{x:.3f}")
+        
+        # Display the table
+        st.dataframe(
+            display_metrics[['Server', 'Grade', 'Total_Sales', 'Sales_Per_Hour', 'Hustle_Score', 
+                           'Transaction_Count', 'Void_Rate', 'True_Retention']],
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # Visualizations
+        exec_viz_col1, exec_viz_col2 = st.columns(2)
+        
+        with exec_viz_col1:
+            # Sales Per Hour by Grade
+            if 'Sales_Per_Hour' in server_metrics.columns and 'Grade' in server_metrics.columns:
+                fig_sph = px.bar(
+                    server_metrics.sort_values('Sales_Per_Hour', ascending=True),
+                    x='Sales_Per_Hour',
+                    y='Server',
+                    color='Grade',
+                    color_discrete_map={'A': '#10b981', 'B': '#cdb082', 'C': '#b88f4d'},
+                    orientation='h',
+                    title="Sales Per Hour by Server (Performance Grade)",
+                    template="plotly_white"
+                )
+                fig_sph.update_layout(
+                    plot_bgcolor='#ffffff',
+                    paper_bgcolor='#f8f4ed',
+                    font=dict(color='#363a39', size=12),
+                    xaxis_title="Sales Per Hour ($)",
+                    yaxis_title="",
+                    showlegend=True
+                )
+                st.plotly_chart(fig_sph, use_container_width=True)
+        
+        with exec_viz_col2:
+            # Hustle Score visualization
+            if 'Hustle_Score' in server_metrics.columns:
+                fig_hustle = px.bar(
+                    server_metrics.sort_values('Hustle_Score', ascending=True),
+                    x='Hustle_Score',
+                    y='Server',
+                    color='Hustle_Score',
+                    color_continuous_scale=[[0, '#e2d2b8'], [0.5, '#cdb082'], [1, '#b88f4d']],
+                    orientation='h',
+                    title="Hustle Score (Transactions Per Hour)",
+                    template="plotly_white"
+                )
+                fig_hustle.update_layout(
+                    plot_bgcolor='#ffffff',
+                    paper_bgcolor='#f8f4ed',
+                    font=dict(color='#363a39', size=12),
+                    xaxis_title="Hustle Score",
+                    yaxis_title="",
+                    showlegend=False
+                )
+                st.plotly_chart(fig_hustle, use_container_width=True)
+        
+        # Void Rate Analysis
+        if 'Void_Rate' in server_metrics.columns and server_metrics['Void_Rate'].sum() > 0:
+            st.markdown("### ⚠️ Void Rate Analysis")
+            void_analysis_col1, void_analysis_col2 = st.columns(2)
+            
+            with void_analysis_col1:
+                void_servers = server_metrics[server_metrics['Void_Rate'] > 0].copy()
+                if not void_servers.empty:
+                    fig_void = px.bar(
+                        void_servers.sort_values('Void_Rate', ascending=True),
+                        x='Void_Rate',
+                        y='Server',
+                        color='Void_Rate',
+                        color_continuous_scale='Reds',
+                        orientation='h',
+                        title="Void Rate by Server (%)",
+                        template="plotly_white"
+                    )
+                    fig_void.update_layout(
+                        plot_bgcolor='#ffffff',
+                        paper_bgcolor='#f8f4ed',
+                        font=dict(color='#363a39', size=12),
+                        xaxis_title="Void Rate (%)",
+                        yaxis_title="",
+                        showlegend=False
+                    )
+                    st.plotly_chart(fig_void, use_container_width=True)
+            
+            with void_analysis_col2:
+                # Performance scatter: Sales vs Void Rate
+                fig_scatter = px.scatter(
+                    server_metrics,
+                    x='Total_Sales',
+                    y='Void_Rate',
+                    color='Grade',
+                    size='Transaction_Count',
+                    hover_name='Server',
+                    color_discrete_map={'A': '#10b981', 'B': '#cdb082', 'C': '#b88f4d'},
+                    title="Sales vs Void Rate (Bubble Size = Transactions)",
+                    template="plotly_white"
+                )
+                fig_scatter.update_layout(
+                    plot_bgcolor='#ffffff',
+                    paper_bgcolor='#f8f4ed',
+                    font=dict(color='#363a39', size=12),
+                    xaxis_title="Total Sales ($)",
+                    yaxis_title="Void Rate (%)",
+                    showlegend=True
+                )
+                st.plotly_chart(fig_scatter, use_container_width=True)
+        
+        # Shift Metrics Summary
+        if not shift_metrics.empty:
+            st.markdown("### 📅 Shift Performance Summary")
+            shift_summary = shift_metrics.groupby('Server').agg({
+                'Total_Sales': 'sum',
+                'Hours_Worked': 'sum',
+                'Transaction_Count': 'sum',
+                'Business_Date': 'nunique'
+            }).reset_index()
+            shift_summary['Avg_Sales_Per_Shift'] = (shift_summary['Total_Sales'] / shift_summary['Business_Date']).round(2)
+            shift_summary['Shifts_Worked'] = shift_summary['Business_Date']
+            
+            display_shift = shift_summary.copy()
+            display_shift['Total_Sales'] = display_shift['Total_Sales'].apply(lambda x: f"${x:,.2f}")
+            display_shift['Avg_Sales_Per_Shift'] = display_shift['Avg_Sales_Per_Shift'].apply(lambda x: f"${x:,.2f}")
+            display_shift['Hours_Worked'] = display_shift['Hours_Worked'].apply(lambda x: f"{x:.1f}")
+            
+            st.dataframe(
+                display_shift[['Server', 'Shifts_Worked', 'Hours_Worked', 'Total_Sales', 
+                             'Avg_Sales_Per_Shift', 'Transaction_Count']],
+                use_container_width=True,
+                hide_index=True
+            )
+    else:
+        st.info("""
+        **No server performance data available.**
+        
+        To see executive dashboard metrics, your data needs to include:
+        - Server/Employee names
+        - Date/time information
+        - Revenue/sales data
+        
+        The executive dashboard calculates:
+        - **Performance Grades** (A/B/C based on sales per hour)
+        - **Hustle Scores** (transactions per hour)
+        - **Void Rates** (error tracking)
+        - **True Retention** (transaction success rate)
+        """)
     
     # ===== FOOTER =====
     st.markdown("---")
