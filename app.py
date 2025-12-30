@@ -316,22 +316,52 @@ def clean_currency_column(series):
         .fillna(0)
     )
 
+def normalize_column_name(name):
+    """
+    Normalize column name for matching: lowercase, replace spaces/underscores.
+    
+    Args:
+        name: Column name to normalize
+        
+    Returns:
+        str: Normalized column name
+    """
+    # Convert to lowercase and replace spaces/underscores with a standard separator
+    normalized = str(name).lower().strip()
+    # Replace both spaces and underscores with a single space, then remove spaces
+    normalized = normalized.replace('_', ' ').replace('-', ' ')
+    # Remove all spaces for comparison
+    normalized = normalized.replace(' ', '')
+    return normalized
+
 def find_column_fuzzy(df, candidates):
     """
-    Find a column in the dataframe that matches any of the candidates (case-insensitive).
+    Find a column in the dataframe that matches any of the candidates.
+    Handles case-insensitive matching and spaces vs underscores.
+    
+    Examples:
+        - "Order Date" matches "order_date", "order date", "OrderDate"
+        - "Total Price" matches "total_price", "total price", "TotalPrice"
     
     Args:
         df: DataFrame to search
-        candidates: List of possible column names
+        candidates: List of possible column names (can have spaces or underscores)
         
     Returns:
-        str or None: Matched column name or None
+        str or None: Matched column name (original case) or None
     """
-    df_cols_lower = {col.lower(): col for col in df.columns}
+    # Create normalized mapping: normalized_name -> original_column_name
+    df_cols_normalized = {}
+    for col in df.columns:
+        normalized = normalize_column_name(col)
+        if normalized not in df_cols_normalized:
+            df_cols_normalized[normalized] = col
     
+    # Check each candidate
     for candidate in candidates:
-        if candidate.lower() in df_cols_lower:
-            return df_cols_lower[candidate.lower()]
+        normalized_candidate = normalize_column_name(candidate)
+        if normalized_candidate in df_cols_normalized:
+            return df_cols_normalized[normalized_candidate]
     
     return None
 
@@ -349,9 +379,16 @@ def standardize_dataframe(df, filename=""):
     
     # ===== REVENUE COLUMN =====
     revenue_candidates = [
+        # Underscore variations
         'net_sales', 'total_price', 'net_price', 'check_total', 
         'sales', 'amount', 'net_amount', 'total_net_sales',
-        'gross_sales', 'total', 'price', 'subtotal'
+        'gross_sales', 'total', 'price', 'subtotal',
+        # Space variations (for CSV files with spaces in headers)
+        'net sales', 'total price', 'net price', 'check total',
+        'total net sales', 'gross sales',
+        # Title case variations
+        'Net Sales', 'Total Price', 'Net Price', 'Check Total',
+        'Total Net Sales', 'Gross Sales', 'Total', 'Price', 'Subtotal'
     ]
     
     revenue_col = find_column_fuzzy(df_processed, revenue_candidates)
@@ -365,9 +402,20 @@ def standardize_dataframe(df, filename=""):
     
     # ===== DATE COLUMN =====
     date_candidates = [
+        # Underscore variations
         'order_date', 'business_date', 'date', 'opened_date', 
         'created_at', 'closed_date', 'paid_date', 'timestamp',
-        'datetime', 'transaction_date'
+        'datetime', 'transaction_date', 'sent_date', 'removed_date',
+        'void_date', 'applied_date',
+        # Space variations (for CSV files with spaces in headers)
+        'order date', 'business date', 'opened date', 'closed date',
+        'paid date', 'transaction date', 'sent date', 'removed date',
+        'void date', 'applied date',
+        # Title case variations
+        'Order Date', 'Business Date', 'Date', 'Opened Date',
+        'Created At', 'Closed Date', 'Paid Date', 'Timestamp',
+        'DateTime', 'Transaction Date', 'Sent Date', 'Removed Date',
+        'Void Date', 'Applied Date'
     ]
     
     date_col = find_column_fuzzy(df_processed, date_candidates)
@@ -385,8 +433,15 @@ def standardize_dataframe(df, filename=""):
     
     # ===== ITEM/PRODUCT COLUMN =====
     item_candidates = [
+        # Underscore variations
         'item_name', 'name', 'menu_item_name', 'item', 
-        'product_name', 'menu_item', 'selection_name', 'description'
+        'product_name', 'menu_item', 'selection_name', 'description',
+        # Space variations
+        'item name', 'menu item name', 'product name', 'menu item',
+        'selection name',
+        # Title case variations
+        'Item Name', 'Name', 'Menu Item Name', 'Item',
+        'Product Name', 'Menu Item', 'Selection Name', 'Description'
     ]
     
     item_col = find_column_fuzzy(df_processed, item_candidates)
@@ -398,8 +453,15 @@ def standardize_dataframe(df, filename=""):
     
     # ===== CATEGORY COLUMN =====
     category_candidates = [
+        # Underscore variations
         'category', 'category_group_name', 'menu_category', 
-        'category_name', 'item_category', 'group'
+        'category_name', 'item_category', 'group',
+        # Space variations
+        'category group name', 'menu category', 'category name',
+        'item category',
+        # Title case variations
+        'Category', 'Category Group Name', 'Menu Category',
+        'Category Name', 'Item Category', 'Group'
     ]
     
     category_col = find_column_fuzzy(df_processed, category_candidates)
@@ -410,7 +472,14 @@ def standardize_dataframe(df, filename=""):
         df_processed['category'] = 'Uncategorized'
     
     # ===== QUANTITY COLUMN =====
-    qty_candidates = ['quantity', 'qty', 'count', 'item_quantity', 'units']
+    qty_candidates = [
+        # Underscore variations
+        'quantity', 'qty', 'count', 'item_quantity', 'units',
+        # Space variations
+        'item quantity',
+        # Title case variations
+        'Quantity', 'Qty', 'Count', 'Item Quantity', 'Units'
+    ]
     
     qty_col = find_column_fuzzy(df_processed, qty_candidates)
     
