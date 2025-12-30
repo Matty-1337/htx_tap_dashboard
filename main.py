@@ -201,10 +201,13 @@ async def run_analysis(request: RunRequest):
             import traceback
             error_trace = traceback.format_exc()
             error_msg = str(e)
+            # Log full error for debugging
+            print(f"ERROR in run_full_analysis: {error_msg}")
+            print(f"TRACEBACK: {error_trace}")
             # Return error as string to ensure it's serializable
             raise HTTPException(
                 status_code=500,
-                detail=f"Analysis execution failed: {error_msg}. Hint: Check that CSV files exist in Supabase Storage folder and data format is correct. Traceback: {error_trace[-300:]}"
+                detail=f"Analysis execution failed: {error_msg}. Hint: Check that CSV files exist in Supabase Storage folder and data format is correct. Traceback: {error_trace[-500:]}"
             )
         
         # Check for errors
