@@ -31,38 +31,38 @@ st.set_page_config(
 )
 
 # =========================================================
-# CUSTOM STYLING - LUXURY DARK THEME
+# CUSTOM STYLING - BRAND IDENTITY LIGHT THEME
 # =========================================================
 
 st.markdown("""
 <style>
     /* Global App Styling */
     .stApp {
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        background: #f8f4ed;
     }
     
     /* Main Title */
     h1 {
-        color: #f8fafc;
+        color: #272a29;
         font-weight: 800;
         letter-spacing: -0.5px;
-        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        text-shadow: 0 1px 2px rgba(0,0,0,0.1);
     }
     
     h2, h3 {
-        color: #e2e8f0;
+        color: #363a39;
         font-weight: 600;
     }
     
-    /* Metric Cards - Glassmorphism */
+    /* Metric Cards */
     div[data-testid="stMetricValue"] {
         font-size: 2rem;
         font-weight: 700;
-        color: #fbbf24;
+        color: #b88f4d;
     }
     
     div[data-testid="stMetricLabel"] {
-        color: #cbd5e1;
+        color: #363a39;
         font-weight: 500;
         font-size: 0.9rem;
     }
@@ -73,28 +73,27 @@ st.markdown("""
     
     /* Card Containers */
     .metric-card {
-        background: rgba(30, 41, 59, 0.6);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(148, 163, 184, 0.1);
+        background: #e2d2b8;
+        border: 1px solid #cdb082;
         border-radius: 16px;
         padding: 20px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     }
     
     /* Sidebar Styling */
     section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
-        border-right: 1px solid rgba(148, 163, 184, 0.1);
+        background: #eeeeee;
+        border-right: 1px solid #cdb082;
     }
     
     section[data-testid="stSidebar"] h2 {
-        color: #fbbf24;
+        color: #b88f4d;
     }
     
     /* Button Styling */
     .stButton>button {
-        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
-        color: #0f172a;
+        background: linear-gradient(135deg, #b88f4d 0%, #cdb082 100%);
+        color: #272a29;
         border: none;
         border-radius: 8px;
         font-weight: 600;
@@ -103,45 +102,59 @@ st.markdown("""
     }
     
     .stButton>button:hover {
+        background: linear-gradient(135deg, #816435 0%, #b88f4d 100%);
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(251, 191, 36, 0.4);
+        box-shadow: 0 4px 12px rgba(184, 143, 77, 0.4);
     }
     
     /* Download Button */
     .stDownloadButton>button {
-        background: rgba(30, 41, 59, 0.8);
-        color: #fbbf24;
-        border: 1px solid #fbbf24;
+        background: #f8f4ed;
+        color: #b88f4d;
+        border: 1px solid #b88f4d;
         border-radius: 8px;
         font-weight: 600;
     }
     
+    .stDownloadButton>button:hover {
+        background: #e2d2b8;
+        border-color: #816435;
+    }
+    
     /* Input Fields */
     .stTextInput>div>div>input {
-        background: rgba(30, 41, 59, 0.6);
-        color: #f8fafc;
-        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: #ffffff;
+        color: #363a39;
+        border: 1px solid #cdb082;
         border-radius: 8px;
     }
     
     /* Date Input */
     .stDateInput>div>div>input {
-        background: rgba(30, 41, 59, 0.6);
-        color: #f8fafc;
-        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: #ffffff;
+        color: #363a39;
+        border: 1px solid #cdb082;
         border-radius: 8px;
+    }
+    
+    /* Selectbox/Multiselect */
+    .stSelectbox>div>div>div {
+        background: #ffffff;
+        color: #363a39;
+        border: 1px solid #cdb082;
     }
     
     /* Divider */
     hr {
-        border-color: rgba(148, 163, 184, 0.2);
+        border-color: #cdb082;
         margin: 2rem 0;
     }
     
     /* DataFrame */
     .dataframe {
-        background: rgba(30, 41, 59, 0.6);
-        color: #f8fafc;
+        background: #ffffff;
+        color: #363a39;
+        border: 1px solid #cdb082;
     }
     
     /* Success/Warning/Error Messages */
@@ -151,13 +164,29 @@ st.markdown("""
     }
     
     .stWarning {
-        background: rgba(251, 191, 36, 0.1);
-        border-left: 4px solid #fbbf24;
+        background: rgba(205, 176, 130, 0.2);
+        border-left: 4px solid #cdb082;
     }
     
     .stError {
         background: rgba(239, 68, 68, 0.1);
         border-left: 4px solid #ef4444;
+    }
+    
+    /* Info boxes */
+    .stInfo {
+        background: rgba(205, 176, 130, 0.15);
+        border-left: 4px solid #cdb082;
+    }
+    
+    /* Text color adjustments */
+    p, span, div {
+        color: #363a39;
+    }
+    
+    /* Caption/subtext */
+    .stCaption {
+        color: #818786;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -433,7 +462,7 @@ def create_revenue_trend_chart(df):
         x=daily_sales['date'],
         y=daily_sales['revenue'],
         name='Daily Revenue',
-        marker_color='rgba(251, 191, 36, 0.6)',
+        marker_color='rgba(205, 176, 130, 0.7)',
         hovertemplate='<b>%{x|%B %d, %Y}</b><br>Revenue: $%{y:,.2f}<extra></extra>'
     ))
     
@@ -442,7 +471,7 @@ def create_revenue_trend_chart(df):
         x=daily_sales['date'],
         y=daily_sales['ma7'],
         name='7-Day Average',
-        line=dict(color='#10b981', width=3),
+        line=dict(color='#816435', width=3),
         hovertemplate='<b>%{x|%B %d, %Y}</b><br>7-Day Avg: $%{y:,.2f}<extra></extra>'
     ))
     
@@ -450,15 +479,15 @@ def create_revenue_trend_chart(df):
         title="Daily Revenue Trend with Moving Average",
         xaxis_title="Date",
         yaxis_title="Revenue ($)",
-        template="plotly_dark",
+        template="plotly_white",
         hovermode='x unified',
-        plot_bgcolor='rgba(30, 41, 59, 0.6)',
-        paper_bgcolor='rgba(30, 41, 59, 0.6)',
-        font=dict(color='#e2e8f0', size=12),
+        plot_bgcolor='#ffffff',
+        paper_bgcolor='#f8f4ed',
+        font=dict(color='#363a39', size=12),
         showlegend=True,
         legend=dict(
-            bgcolor='rgba(15, 23, 42, 0.8)',
-            bordercolor='rgba(148, 163, 184, 0.2)',
+            bgcolor='rgba(255, 255, 255, 0.9)',
+            bordercolor='#cdb082',
             borderwidth=1
         )
     )
@@ -484,17 +513,17 @@ def create_top_items_chart(df, top_n=15):
         x='revenue',
         orientation='h',
         title=f"Top {top_n} Menu Items by Revenue",
-        template="plotly_dark",
+        template="plotly_white",
         color='revenue',
-        color_continuous_scale='Viridis'
+        color_continuous_scale=[[0, '#e2d2b8'], [0.5, '#cdb082'], [1, '#b88f4d']]
     )
     
     fig.update_layout(
         xaxis_title="Revenue ($)",
         yaxis_title="",
-        plot_bgcolor='rgba(30, 41, 59, 0.6)',
-        paper_bgcolor='rgba(30, 41, 59, 0.6)',
-        font=dict(color='#e2e8f0', size=12),
+        plot_bgcolor='#ffffff',
+        paper_bgcolor='#f8f4ed',
+        font=dict(color='#363a39', size=12),
         showlegend=False
     )
     
@@ -534,16 +563,16 @@ def create_hourly_heatmap(df):
         labels=dict(x="Day of Week", y="Hour of Day", color="Revenue ($)"),
         x=pivot.columns,
         y=pivot.index,
-        color_continuous_scale="Plasma",
+        color_continuous_scale=[[0, '#f8f4ed'], [0.3, '#e2d2b8'], [0.6, '#cdb082'], [1, '#b88f4d']],
         title="Revenue Heatmap: Day × Hour",
         aspect="auto"
     )
     
     fig.update_layout(
-        template="plotly_dark",
-        plot_bgcolor='rgba(30, 41, 59, 0.6)',
-        paper_bgcolor='rgba(30, 41, 59, 0.6)',
-        font=dict(color='#e2e8f0', size=12)
+        template="plotly_white",
+        plot_bgcolor='#ffffff',
+        paper_bgcolor='#f8f4ed',
+        font=dict(color='#363a39', size=12)
     )
     
     return fig
@@ -560,20 +589,22 @@ def create_category_pie_chart(df):
         .sort_values('revenue', ascending=False)
     )
     
+    # Brand color palette for pie chart
+    brand_colors = ['#b88f4d', '#cdb082', '#e2d2b8', '#816435', '#f8f4ed', '#eeeeee']
     fig = px.pie(
         category_sales,
         values='revenue',
         names='category',
         title="Revenue Distribution by Category",
         hole=0.4,
-        color_discrete_sequence=px.colors.qualitative.Set3
+        color_discrete_sequence=brand_colors
     )
     
     fig.update_layout(
-        template="plotly_dark",
-        plot_bgcolor='rgba(30, 41, 59, 0.6)',
-        paper_bgcolor='rgba(30, 41, 59, 0.6)',
-        font=dict(color='#e2e8f0', size=12),
+        template="plotly_white",
+        plot_bgcolor='#ffffff',
+        paper_bgcolor='#f8f4ed',
+        font=dict(color='#363a39', size=12),
         showlegend=True
     )
     
@@ -610,17 +641,17 @@ def create_meal_period_chart(df):
         x='meal_period',
         y='revenue',
         title="Revenue by Meal Period",
-        template="plotly_dark",
+        template="plotly_white",
         color='revenue',
-        color_continuous_scale='Sunset'
+        color_continuous_scale=[[0, '#e2d2b8'], [0.5, '#cdb082'], [1, '#b88f4d']]
     )
     
     fig.update_layout(
         xaxis_title="Meal Period",
         yaxis_title="Revenue ($)",
-        plot_bgcolor='rgba(30, 41, 59, 0.6)',
-        paper_bgcolor='rgba(30, 41, 59, 0.6)',
-        font=dict(color='#e2e8f0', size=12),
+        plot_bgcolor='#ffffff',
+        paper_bgcolor='#f8f4ed',
+        font=dict(color='#363a39', size=12),
         showlegend=False
     )
     
@@ -659,7 +690,7 @@ def create_weekday_weekend_comparison(df):
             x=comparison['day_type'],
             y=comparison['revenue'],
             name='Revenue',
-            marker_color=['#fbbf24', '#10b981'],
+            marker_color=['#b88f4d', '#cdb082'],
             showlegend=False,
             hovertemplate='<b>%{x}</b><br>Revenue: $%{y:,.2f}<extra></extra>'
         ),
@@ -672,7 +703,7 @@ def create_weekday_weekend_comparison(df):
             x=comparison['day_type'],
             y=comparison['avg_revenue_per_item'],
             name='Avg Price',
-            marker_color=['#fbbf24', '#10b981'],
+            marker_color=['#b88f4d', '#cdb082'],
             showlegend=False,
             hovertemplate='<b>%{x}</b><br>Avg: $%{y:.2f}<extra></extra>'
         ),
@@ -681,10 +712,10 @@ def create_weekday_weekend_comparison(df):
     
     fig.update_layout(
         title_text="Weekday vs Weekend Performance",
-        template="plotly_dark",
-        plot_bgcolor='rgba(30, 41, 59, 0.6)',
-        paper_bgcolor='rgba(30, 41, 59, 0.6)',
-        font=dict(color='#e2e8f0', size=12),
+        template="plotly_white",
+        plot_bgcolor='#ffffff',
+        paper_bgcolor='#f8f4ed',
+        font=dict(color='#363a39', size=12),
         height=400
     )
     
@@ -711,16 +742,16 @@ def create_executive_pdf(client_name, metrics, top_items):
     width, height = letter
     
     # ===== HEADER SECTION =====
-    # Dark header background
-    c.setFillColor(HexColor('#0f172a'))
+    # Light header background with brand colors
+    c.setFillColor(HexColor('#e2d2b8'))
     c.rect(0, height - 120, width, 120, fill=1, stroke=0)
     
     # Gold accent bar
-    c.setFillColor(HexColor('#fbbf24'))
+    c.setFillColor(HexColor('#b88f4d'))
     c.rect(0, height - 125, width, 5, fill=1, stroke=0)
     
     # Title
-    c.setFillColor(HexColor('#ffffff'))
+    c.setFillColor(HexColor('#272a29'))
     c.setFont("Helvetica-Bold", 28)
     c.drawString(50, height - 60, "HTX TAP Analytics")
     
@@ -729,14 +760,14 @@ def create_executive_pdf(client_name, metrics, top_items):
     
     # Date
     c.setFont("Helvetica", 10)
-    c.setFillColor(HexColor('#cbd5e1'))
+    c.setFillColor(HexColor('#818786'))
     c.drawString(50, height - 105, f"Generated: {datetime.now().strftime('%B %d, %Y at %I:%M %p')}")
     
     # ===== KEY METRICS SECTION =====
     y_position = height - 160
     
     c.setFont("Helvetica-Bold", 14)
-    c.setFillColor(HexColor('#0f172a'))
+    c.setFillColor(HexColor('#272a29'))
     c.drawString(50, y_position, "Performance Overview")
     
     y_position -= 30
@@ -767,12 +798,12 @@ def create_executive_pdf(client_name, metrics, top_items):
     c.drawString(450, y_position, "% of Total")
     
     y_position -= 5
-    c.setStrokeColor(HexColor('#cbd5e1'))
+    c.setStrokeColor(HexColor('#cdb082'))
     c.line(50, y_position, width - 50, y_position)
     
     y_position -= 15
     c.setFont("Helvetica", 9)
-    c.setFillColor(HexColor('#0f172a'))
+    c.setFillColor(HexColor('#363a39'))
     
     total_rev = metrics.get('total_revenue', 1)
     
@@ -793,7 +824,7 @@ def create_executive_pdf(client_name, metrics, top_items):
     
     # ===== FOOTER =====
     c.setFont("Helvetica", 8)
-    c.setFillColor(HexColor('#64748b'))
+    c.setFillColor(HexColor('#818786'))
     c.drawString(50, 30, "HTX TAP - Track. Analyze. Profit.")
     c.drawRightString(width - 50, 30, "Confidential - For Internal Use Only")
     
@@ -1167,7 +1198,7 @@ def main():
     # ===== FOOTER =====
     st.markdown("---")
     st.markdown("""
-    <div style='text-align: center; color: #64748b; padding: 20px;'>
+    <div style='text-align: center; color: #818786; padding: 20px;'>
         <p style='margin: 0;'>HTX TAP Analytics Dashboard</p>
         <p style='margin: 0; font-size: 0.9em;'>Track. Analyze. Profit.</p>
     </div>
