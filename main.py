@@ -19,10 +19,22 @@ from htx_tap_analytics import run_full_analysis
 app = FastAPI(title="HTX TAP Analytics API", version="1.0.0")
 
 # CORS Configuration
-# Allow all origins for now (can be restricted to specific Vercel URLs in production)
+# Allow localhost and all Vercel deployments
+def is_allowed_origin(origin: str) -> bool:
+    if not origin:
+        return False
+    allowed = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+    ]
+    # Allow all Vercel deployments
+    if origin.endswith(".vercel.app"):
+        return True
+    return origin in allowed
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific Vercel URLs
+    allow_origin_regex=r"https?://(localhost|.*\.vercel\.app)(:\d+)?",
     allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
