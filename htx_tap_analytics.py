@@ -576,6 +576,179 @@ def analyze_peak_hours(data: Dict[str, pd.DataFrame]) -> Tuple[pd.DataFrame, pd.
 
 
 # ============================================================
+# ANALYSIS 7: EMPLOYEE PERFORMANCE & HUSTLE SCORE
+# ============================================================
+
+def analyze_employee_performance(data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """
+    Comprehensive employee performance analysis.
+    Combines sales, waste, bottle conversion, food attachment, and discount metrics.
+    Calculates "Hustle Score" - a composite performance metric.
+    """
+    sales = data['sales']
+    labor = data['labor']
+    
+    if sales.empty:
+        return pd.DataFrame()
+    
+    # Find columns
+    server_col = find_column_fuzzy(sales, ['Server', 'server'])
+    revenue_col = find_column_fuzzy(sales, ['Net Price', 'net_price', 'Total Price', 'total_price'])
+    check_id_col = find_column_fuzzy(sales, ['Check Id', 'check_id'])
+    
+    if not server_col or not revenue_col:
+        return pd.DataFrame()
+    
+    # Sales performance
+    agg_dict = {revenue_col: ['sum', 'mean', 'count']}
+    if check_id_col:
+        agg_dict[check_id_col] = 'nunique'
+    
+    sales_perf = sales.groupby(server_col).agg(agg_dict).reset_index()
+    sales_perf.columns = ['Server', 'Total_Revenue', 'Avg_Check_Value', 'Total_Items'] + (['Total_Checks'] if check_id_col else [])
+    if not check_id_col:
+        sales_perf['Total_Checks'] = sales_perf['Total_Items']
+    
+    # Get waste efficiency metrics
+    waste_df = analyze_waste_efficiency(data)
+    if not waste_df.empty:
+        sales_perf = sales_perf.merge(
+            waste_df[['Server', 'Waste_Rate_Pct', 'Status', 'Revenue_per_Waste_Dollar']],
+            on='Server',
+            how='left'
+        )
+    else:
+        sales_perf['Waste_Rate_Pct'] = 0
+        sales_perf['Status'] = 'Unknown'
+        sales_perf['Revenue_per_Waste_Dollar'] = 0
+    
+    # Get bottle conversion
+    bottle_df, _ = analyze_bottle_conversion(data)
+    if not bottle_df.empty:
+        sales_perf = sales_perf.merge(
+            bottle_df[['Server', 'Conversion_Rate', 'Bottle_Checks']],
+            on='Server',
+            how='left'
+        )
+    else:
+        sales_perf['Conversion_Rate'] = 0
+        sales_perf['Bottle_Checks'] = 0
+    
+    # Get food attachment
+    attachment_df, _ = analyze_food_attachment(data)
+    if not attachment_df.empty:
+        sales_perf = sales_perf.merge(
+            attachment_df[['Server', 'Attachment_Rate', 'Food_Checks', 'Liquor_Checks']],
+            on='Server',
+            how='left'
+        )
+    else:
+        sales_perf['Attachment_Rate'] = 0
+        sales_perf['Food_Checks'] = 0
+        sales_perf['Liquor_Checks'] = 0
+    
+    # Get discount analysis
+    discount_df, _, _ = analyze_discount_integrity(data)
+    if not discount_df.empty:
+        sales_perf = sales_perf.merge(
+            discount_df[['Server', 'Total_Discounts', 'Discount_Count']],
+            on='Server',
+            how='left'
+        )
+        sales_perf['Discount_Rate'] = (sales_perf['Total_Discounts'] / (sales_perf['Total_Revenue'] + 0.01)) * 100
+    else:
+        sales_perf['Total_Discounts'] = 0
+        sales_perf['Discount_Count'] = 0
+        sales_perf['Discount_Rate'] = 0
+    
+    # Fill NaN values
+    sales_perf = sales_perf.fillna(0)
+    
+    # Labor data integration (if available)
+    if not labor.empty:
+        employee_col = find_column_fuzzy(labor, ['Employee', 'employee'])
+        net_sales_col = find_column_fuzzy(labor, ['Net Sales', 'net_sales'])
+        total_pay_col = find_column_fuzzy(labor, ['Total Pay', 'total_pay'])
+        regular_hours_col = find_column_fuzzy(labor, ['Regular Hours', 'regular_hours'])
+        overtime_hours_col = find_column_fuzzy(labor, ['Overtime Hours', 'overtime_hours'])
+        
+        if all([employee_col, net_sales_col, total_pay_col]):
+            labor_perf = labor[[employee_col, net_sales_col, total_pay_col]].copy()
+            labor_perf.columns = ['Employee', 'Labor_Net_Sales', 'Total_Pay']
+            
+            if regular_hours_col:
+                labor_perf['Regular_Hours'] = labor[regular_hours_col]
+            if overtime_hours_col:
+                labor_perf['Overtime_Hours'] = labor[overtime_hours_col]
+                labor_perf['Total_Hours'] = labor_perf.get('Regular_Hours', 0) + labor_perf.get('Overtime_Hours', 0)
+            
+            # Match employee names (labor uses "LastName, FirstName", sales uses "FirstName LastName")
+            for idx, row in sales_perf.iterrows():
+                server_name = row['Server']
+                # Try to find matching labor record
+                for lab_idx, lab_row in labor_perf.iterrows():
+                    employee_name = str(lab_row['Employee'])
+                    if ',' in employee_name:
+                        parts = employee_name.split(',')
+                        if len(parts) >= 2:
+                            last = parts[0].strip()
+                            first = parts[1].strip()
+                            # Check if names match (flexible matching)
+                            if (first.lower() in server_name.lower() or 
+                                last.lower() in server_name.lower() or
+                                server_name.lower() in f"{first} {last}".lower()):
+                                sales_perf.at[idx, 'Labor_Net_Sales'] = lab_row['Labor_Net_Sales']
+                                sales_perf.at[idx, 'Total_Pay'] = lab_row['Total_Pay']
+                                if 'Total_Hours' in lab_row:
+                                    sales_perf.at[idx, 'Hours_Worked'] = lab_row['Total_Hours']
+                                elif 'Regular_Hours' in lab_row:
+                                    sales_perf.at[idx, 'Hours_Worked'] = lab_row['Regular_Hours']
+                                break
+    
+    # Calculate Hustle Score (composite metric)
+    # Formula: Revenue + Efficiency + Upsells - Waste - Discounts
+    sales_perf['Hustle_Score'] = (
+        (sales_perf['Total_Revenue'] / 1000) +  # Revenue component (normalized)
+        (sales_perf['Conversion_Rate'] * 10) +  # Bottle conversion bonus
+        (sales_perf['Attachment_Rate'] * 5) +   # Food attachment bonus
+        (sales_perf['Revenue_per_Waste_Dollar'] / 10) -  # Efficiency bonus
+        (sales_perf['Waste_Rate_Pct'] * 2) -    # Waste penalty
+        (sales_perf['Discount_Rate'] * 3)       # Discount penalty
+    ).fillna(0)
+    
+    # Performance Tier classification
+    def classify_performance(score):
+        if score >= 200:
+            return 'Elite'
+        elif score >= 150:
+            return 'Top Performer'
+        elif score >= 100:
+            return 'Strong'
+        elif score >= 50:
+            return 'Average'
+        else:
+            return 'Needs Improvement'
+    
+    sales_perf['Performance_Tier'] = sales_perf['Hustle_Score'].apply(classify_performance)
+    
+    # Efficiency metrics
+    if 'Hours_Worked' in sales_perf.columns:
+        sales_perf['Revenue_per_Hour'] = sales_perf['Total_Revenue'] / sales_perf['Hours_Worked'].replace(0, 1)
+        sales_perf['ROI'] = (sales_perf['Total_Revenue'] - sales_perf['Total_Discounts']) / sales_perf['Total_Pay'].replace(0, 1)
+    else:
+        sales_perf['Revenue_per_Hour'] = 0
+        sales_perf['ROI'] = 0
+    
+    # Additional metrics
+    sales_perf['Efficiency_Score'] = (
+        (100 - sales_perf['Waste_Rate_Pct']) +  # Lower waste = higher efficiency
+        (sales_perf['Revenue_per_Waste_Dollar'] / 10)  # Revenue per waste dollar
+    ).fillna(0)
+    
+    return sales_perf.sort_values('Hustle_Score', ascending=False)
+
+
+# ============================================================
 # SUPABASE UPLOAD FUNCTIONS
 # ============================================================
 
