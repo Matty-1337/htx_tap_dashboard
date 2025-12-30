@@ -120,10 +120,7 @@ async def run_analysis(request: RunRequest):
         except ValueError as e:
             raise HTTPException(
                 status_code=500,
-                detail={
-                    "error": str(e),
-                    "hint": "Check that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are set"
-                }
+                detail=f"{str(e)}. Hint: Check that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are set"
             )
         
         bucket = os.getenv("SUPABASE_BUCKET", "client-data")
@@ -210,21 +207,22 @@ async def run_analysis(request: RunRequest):
         
     except HTTPException:
         raise
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(
             status_code=400,
-            detail={
-                "error": str(e),
-                "hint": "clientId must be one of: melrose, bestregard, fancy"
-            }
+            detail=f"{str(e)}. Hint: clientId must be one of: melrose, bestregard, fancy"
         )
+    except HTTPException:
+        raise
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        error_msg = str(e)
         raise HTTPException(
             status_code=500,
-            detail={
-                "error": f"Unexpected error: {str(e)}",
-                "hint": "Check Railway logs for detailed error information"
-            }
+            detail=f"Unexpected error: {error_msg}. Hint: Check Railway logs for detailed error information. Traceback: {error_trace[-300:]}"
         )
 
 if __name__ == "__main__":
