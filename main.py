@@ -113,8 +113,26 @@ async def health_check():
 async def test_supabase():
     """Test Supabase connection"""
     try:
+        url = os.getenv("SUPABASE_URL", "").strip('"\'')
+        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip('"\'')
+        bucket = os.getenv("SUPABASE_BUCKET", "client-data").strip('"\'')
+        
+        # Validate env vars
+        if not url:
+            return {"ok": False, "error": "SUPABASE_URL is not set"}
+        if not key:
+            return {"ok": False, "error": "SUPABASE_SERVICE_ROLE_KEY is not set"}
+        
+        # Check key format (should be a JWT with 3 parts separated by dots)
+        key_parts = key.split('.')
+        if len(key_parts) != 3:
+            return {
+                "ok": False,
+                "error": f"Invalid key format: expected JWT with 3 parts, got {len(key_parts)} parts",
+                "key_preview": key[:20] + "..." if len(key) > 20 else key
+            }
+        
         supabase = get_supabase_client()
-        bucket = os.getenv("SUPABASE_BUCKET", "client-data")
         # Try to list files in Melrose folder
         folder = "Melrose"
         files = supabase.storage.from_(bucket).list(folder)
