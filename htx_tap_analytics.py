@@ -841,5 +841,10 @@ def run_full_analysis(client, bucket, folder, upload_to_db: bool = False, report
     if upload_to_db and not results['dow_analysis'].empty:
         upload_to_supabase(client, results['dow_analysis'], 'dow_analysis', report_period)
     
+    # Analysis 7: Employee Performance & Hustle Score
+    results['employee_performance'] = analyze_employee_performance(data)
+    if upload_to_db and not results['employee_performance'].empty:
+        upload_to_supabase(client, results['employee_performance'], 'employee_performance', report_period)
+    
     return results
 
