@@ -18,6 +18,7 @@ from reportlab.lib.pagesizes import letter, landscape
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
+from htx_tap_analytics import run_full_analysis
 
 # =========================================================
 # PAGE CONFIGURATION
@@ -1284,6 +1285,285 @@ def main():
             mime="text/csv",
             use_container_width=True
         )
+    
+    # ===== ADVANCED ANALYTICS SECTION =====
+    st.markdown("---")
+    st.markdown("## 🔬 Advanced Analytics Suite")
+    st.markdown("**Comprehensive revenue analysis with waste efficiency, bottle conversion, menu volatility, and more.**")
+    
+    analytics_tab1, analytics_tab2, analytics_tab3, analytics_tab4, analytics_tab5, analytics_tab6, analytics_tab7 = st.tabs([
+        "📊 Overview", "💸 Waste Efficiency", "🍾 Bottle Conversion", "📈 Menu Volatility",
+        "🍔 Food Attachment", "⏰ Peak Hours", "💰 Discount Analysis"
+    ])
+    
+    # Run analytics button
+    if st.button("🚀 Run Advanced Analytics", use_container_width=True, type="primary"):
+        with st.spinner("Running comprehensive analytics... This may take a minute."):
+            try:
+                results = run_full_analysis(client, BUCKET, CLIENT_FOLDER, upload_to_db=False)
+                
+                if 'error' in results:
+                    st.error(f"❌ {results['error']}")
+                else:
+                    st.session_state['analytics_results'] = results
+                    st.success("✅ Analytics completed successfully!")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"❌ Error running analytics: {str(e)}")
+                st.exception(e)
+    
+    # Display results if available
+    if 'analytics_results' in st.session_state:
+        results = st.session_state['analytics_results']
+        
+        with analytics_tab1:
+            st.markdown("### 📊 Analytics Overview")
+            
+            # Summary metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                if not results.get('waste_efficiency', pd.DataFrame()).empty:
+                    avg_waste = results['waste_efficiency']['Waste_Rate_Pct'].mean()
+                    st.metric("Avg Waste Rate", f"{avg_waste:.1f}%")
+            
+            with col2:
+                if results.get('bottle_summary'):
+                    st.metric("Bottle Conversion", f"{results['bottle_summary'].get('bottle_pct', 0):.1f}%")
+            
+            with col3:
+                if not results.get('menu_volatility', pd.DataFrame()).empty:
+                    critical = len(results['menu_volatility'][results['menu_volatility']['Volatility_Pct'] > 100])
+                    st.metric("Critical Menu Items", f"{critical}")
+            
+            with col4:
+                if results.get('attachment_summary'):
+                    st.metric("Food Attachment Rate", f"{results['attachment_summary'].get('overall_rate', 0):.1f}%")
+            
+            st.markdown("---")
+            st.markdown("**Select a tab above to view detailed analytics for each metric.**")
+        
+        with analytics_tab2:
+            st.markdown("### 💸 Waste Efficiency Analysis")
+            if not results.get('waste_efficiency', pd.DataFrame()).empty:
+                waste_df = results['waste_efficiency']
+                
+                # Chart
+                fig = px.bar(
+                    waste_df.head(20),
+                    x='Server',
+                    y='Waste_Rate_Pct',
+                    color='Status',
+                    color_discrete_map={
+                        'Good': '#10b981',
+                        'Monitor': '#cdb082',
+                        'Caution': '#b88f4d',
+                        'Critical': '#ef4444'
+                    },
+                    title="Waste Rate by Server",
+                    template="plotly_white"
+                )
+                fig.update_layout(
+                    plot_bgcolor='#ffffff',
+                    paper_bgcolor='#f8f4ed',
+                    font=dict(color='#363a39', size=12),
+                    xaxis_tickangle=-45
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Table
+                st.dataframe(waste_df[['Server', 'Revenue', 'Total_Waste', 'Waste_Rate_Pct', 'Status']], use_container_width=True)
+            else:
+                st.info("No waste efficiency data available. Run analytics first.")
+        
+        with analytics_tab3:
+            st.markdown("### 🍾 Bottle Service Conversion")
+            if not results.get('bottle_conversion', pd.DataFrame()).empty:
+                bottle_df = results['bottle_conversion']
+                
+                # Chart
+                fig = px.bar(
+                    bottle_df.head(20),
+                    x='Server',
+                    y='Conversion_Rate',
+                    color='Conversion_Rate',
+                    color_continuous_scale=[[0, '#e2d2b8'], [0.5, '#cdb082'], [1, '#b88f4d']],
+                    title="Bottle Conversion Rate by Server",
+                    template="plotly_white"
+                )
+                fig.update_layout(
+                    plot_bgcolor='#ffffff',
+                    paper_bgcolor='#f8f4ed',
+                    font=dict(color='#363a39', size=12),
+                    xaxis_tickangle=-45,
+                    showlegend=False
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Summary
+                if results.get('bottle_summary'):
+                    summary = results['bottle_summary']
+                    st.markdown(f"**Venue Average:** {summary.get('bottle_pct', 0):.1f}%")
+                    st.markdown(f"**Bottle Premium:** {summary.get('bottle_premium', 0):.1f}x revenue multiplier")
+                
+                st.dataframe(bottle_df, use_container_width=True)
+            else:
+                st.info("No bottle conversion data available. Run analytics first.")
+        
+        with analytics_tab4:
+            st.markdown("### 📈 Menu Volatility Analysis")
+            if not results.get('menu_volatility', pd.DataFrame()).empty:
+                volatility_df = results['menu_volatility']
+                
+                # Chart
+                fig = px.scatter(
+                    volatility_df.head(50),
+                    x='Net Price',
+                    y='Volatility_Pct',
+                    color='Action',
+                    size='Total_Waste',
+                    hover_data=['Menu Item'],
+                    color_discrete_map={
+                        'OK': '#10b981',
+                        'Monitor': '#cdb082',
+                        'Investigate': '#b88f4d',
+                        'REMOVE': '#ef4444'
+                    },
+                    title="Menu Item Volatility (Waste vs Sales)",
+                    template="plotly_white"
+                )
+                fig.update_layout(
+                    plot_bgcolor='#ffffff',
+                    paper_bgcolor='#f8f4ed',
+                    font=dict(color='#363a39', size=12)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Critical items
+                critical = volatility_df[volatility_df['Volatility_Pct'] > 100]
+                if not critical.empty:
+                    st.warning(f"⚠️ **{len(critical)} items with >100% volatility (voided more than sold!)**")
+                    st.dataframe(critical[['Menu Item', 'Net Price', 'Total_Waste', 'Volatility_Pct', 'Action']], use_container_width=True)
+                
+                st.dataframe(volatility_df[['Menu Item', 'Net Price', 'Total_Waste', 'Volatility_Pct', 'Action']], use_container_width=True)
+            else:
+                st.info("No menu volatility data available. Run analytics first.")
+        
+        with analytics_tab5:
+            st.markdown("### 🍔 Food Attachment Rate")
+            if not results.get('food_attachment', pd.DataFrame()).empty:
+                attachment_df = results['food_attachment']
+                
+                # Chart
+                fig = px.bar(
+                    attachment_df.head(20),
+                    x='Server',
+                    y='Attachment_Rate',
+                    color='Attachment_Rate',
+                    color_continuous_scale=[[0, '#e2d2b8'], [0.5, '#cdb082'], [1, '#b88f4d']],
+                    title="Food Attachment Rate on Liquor Orders",
+                    template="plotly_white"
+                )
+                fig.update_layout(
+                    plot_bgcolor='#ffffff',
+                    paper_bgcolor='#f8f4ed',
+                    font=dict(color='#363a39', size=12),
+                    xaxis_tickangle=-45,
+                    showlegend=False
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Summary
+                if results.get('attachment_summary'):
+                    summary = results['attachment_summary']
+                    st.markdown(f"**Overall Rate:** {summary.get('overall_rate', 0):.1f}%")
+                    st.markdown(f"**Missed Revenue Opportunity:** ${summary.get('total_missed_revenue', 0):,.0f}")
+                
+                st.dataframe(attachment_df, use_container_width=True)
+            else:
+                st.info("No food attachment data available. Run analytics first.")
+        
+        with analytics_tab6:
+            st.markdown("### ⏰ Peak Hours & Days Analysis")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if not results.get('hourly_analysis', pd.DataFrame()).empty:
+                    hourly_df = results['hourly_analysis']
+                    
+                    fig = px.bar(
+                        hourly_df,
+                        x='Hour',
+                        y='Pct_Revenue',
+                        color='Pct_Revenue',
+                        color_continuous_scale=[[0, '#e2d2b8'], [0.5, '#cdb082'], [1, '#b88f4d']],
+                        title="Revenue by Hour of Day",
+                        template="plotly_white"
+                    )
+                    fig.update_layout(
+                        plot_bgcolor='#ffffff',
+                        paper_bgcolor='#f8f4ed',
+                        font=dict(color='#363a39', size=12),
+                        showlegend=False
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+            
+            with col2:
+                if not results.get('dow_analysis', pd.DataFrame()).empty:
+                    dow_df = results['dow_analysis']
+                    
+                    fig = px.bar(
+                        dow_df,
+                        x='DayOfWeek',
+                        y='Pct_Revenue',
+                        color='Pct_Revenue',
+                        color_continuous_scale=[[0, '#e2d2b8'], [0.5, '#cdb082'], [1, '#b88f4d']],
+                        title="Revenue by Day of Week",
+                        template="plotly_white"
+                    )
+                    fig.update_layout(
+                        plot_bgcolor='#ffffff',
+                        paper_bgcolor='#f8f4ed',
+                        font=dict(color='#363a39', size=12),
+                        showlegend=False
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+        
+        with analytics_tab7:
+            st.markdown("### 💰 Discount Analysis")
+            if not results.get('discount_analysis', pd.DataFrame()).empty:
+                discount_df = results['discount_analysis']
+                
+                # Chart
+                fig = px.bar(
+                    discount_df.head(20),
+                    x='Server',
+                    y='Total_Discounts',
+                    color='Total_Discounts',
+                    color_continuous_scale=[[0, '#e2d2b8'], [0.5, '#cdb082'], [1, '#b88f4d']],
+                    title="Total Discounts by Server",
+                    template="plotly_white"
+                )
+                fig.update_layout(
+                    plot_bgcolor='#ffffff',
+                    paper_bgcolor='#f8f4ed',
+                    font=dict(color='#363a39', size=12),
+                    xaxis_tickangle=-45,
+                    showlegend=False
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Red flags
+                if results.get('discount_red_flags'):
+                    red_flags = results['discount_red_flags']
+                    if red_flags:
+                        st.warning(f"⚠️ **{len(red_flags)} red flags identified**")
+                        st.json(red_flags)
+                
+                st.dataframe(discount_df, use_container_width=True)
+            else:
+                st.info("No discount data available. Run analytics first.")
     
     # ===== FOOTER =====
     st.markdown("---")
