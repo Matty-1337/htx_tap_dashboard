@@ -87,6 +87,7 @@ export default function DashboardPage() {
   const [isRunning, setIsRunning] = useState(false)
   const [filters, setFilters] = useState<Filters>({ datePreset: '30d' }) // Default to 30 days
   const [tourDropdownOpen, setTourDropdownOpen] = useState(false)
+  const [teamSortBy, setTeamSortBy] = useState<'Revenue' | 'Transactions' | 'Void_Rate_Pct'>('Revenue')
   const router = useRouter()
   const sectionRefs = useRef<Record<string, HTMLElement>>({})
   const tourDropdownRef = useRef<HTMLDivElement>(null)
@@ -459,7 +460,6 @@ export default function DashboardPage() {
   const [actionItems, setActionItems] = useState<ActionItem[]>([])
   const [actionsLoading, setActionsLoading] = useState(true)
   const [roleNames, setRoleNames] = useState<{ gmName?: string; manager1Name?: string; manager2Name?: string }>({})
-  const [teamSortBy, setTeamSortBy] = useState<'Revenue' | 'Transactions' | 'Void_Rate_Pct'>('Revenue')
 
   // Fetch role names on mount
   useEffect(() => {
