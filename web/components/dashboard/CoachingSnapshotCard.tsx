@@ -35,27 +35,23 @@ export function CoachingSnapshotCard({ snapshot, topReasons }: CoachingSnapshotC
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <KpiCard
-            title="Revenue"
-            value={formatCurrency(snapshot.Revenue)}
-            trend={null}
+            label="Revenue"
+            value={snapshot.Revenue}
           />
           <KpiCard
-            title="Transactions"
-            value={formatNumber(snapshot.Transactions)}
-            trend={null}
+            label="Transactions"
+            value={snapshot.Transactions}
           />
           {snapshot.Void_Amount > 0 && (
             <KpiCard
-              title="Void Amount"
-              value={formatCurrency(snapshot.Void_Amount)}
-              trend={null}
+              label="Void Amount"
+              value={snapshot.Void_Amount}
             />
           )}
           {snapshot.Void_Rate_Pct > 0 && (
             <KpiCard
-              title="Void Rate"
-              value={formatPercent(snapshot.Void_Rate_Pct)}
-              trend={null}
+              label="Void Rate %"
+              value={snapshot.Void_Rate_Pct}
             />
           )}
         </div>
