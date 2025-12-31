@@ -1,14 +1,16 @@
 'use client'
 
+import type { HTMLAttributes } from 'react'
 import clsx from 'clsx'
 
-interface PillBadgeProps {
-  children: React.ReactNode
-  variant?: 'default' | 'success' | 'warning' | 'danger'
+export type PillBadgeVariant = 'default' | 'success' | 'warning' | 'danger'
+
+export type PillBadgeProps = HTMLAttributes<HTMLSpanElement> & {
+  variant?: PillBadgeVariant
   className?: string
 }
 
-export function PillBadge({ children, variant = 'default', className }: PillBadgeProps) {
+export function PillBadge({ variant = 'default', className, ...props }: PillBadgeProps) {
   const getVariantStyles = () => {
     switch (variant) {
       case 'success':
@@ -37,6 +39,7 @@ export function PillBadge({ children, variant = 'default', className }: PillBadg
 
   return (
     <span
+      {...props}
       className={clsx(
         'inline-flex items-center px-3 py-1 text-xs font-medium',
         className
@@ -44,9 +47,10 @@ export function PillBadge({ children, variant = 'default', className }: PillBadg
       style={{
         borderRadius: 'var(--radius)',
         ...getVariantStyles(),
+        ...props.style,
       }}
     >
-      {children}
+      {props.children}
     </span>
   )
 }

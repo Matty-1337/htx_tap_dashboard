@@ -36,6 +36,10 @@ export function ActionRail({ actions }: ActionRailProps) {
 
   const displayActions = activeTab === 'open' ? sortedActions : completedActions
 
+  const setAssigneeFor = (id: string, value: Assignee) => {
+    setAssignees((prev) => ({ ...prev, [id]: value }))
+  }
+
   const handleMarkDone = (id: string) => {
     setCompletedIds((prev) => new Set([...prev, id]))
     setPinnedIds((prev) => {

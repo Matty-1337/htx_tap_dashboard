@@ -6,9 +6,10 @@ import clsx from 'clsx'
 interface SkeletonCardProps {
   className?: string
   height?: string
+  children?: React.ReactNode
 }
 
-export function SkeletonCard({ className, height = 'h-32' }: SkeletonCardProps) {
+export function SkeletonCard({ className, height = 'h-32', children }: SkeletonCardProps) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -19,7 +20,9 @@ export function SkeletonCard({ className, height = 'h-32' }: SkeletonCardProps) 
         height,
         className
       )}
-    />
+    >
+      {children}
+    </motion.div>
   )
 }
 
