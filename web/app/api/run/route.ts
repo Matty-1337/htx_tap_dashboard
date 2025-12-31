@@ -69,13 +69,28 @@ export async function POST(request: NextRequest) {
     }
 
     // Get Railway API base URL
-    const base = process.env.NEXT_PUBLIC_API_BASE_URL || 
-                process.env.API_BASE_URL || 
-                'http://localhost:8000'
+    // In production, require env var. In dev, default to local backend.
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL
     
-    // Remove trailing slash if present
-    const apiBase = base.replace(/\/$/, '')
+    if (!base) {
+      if (isProduction) {
+        return NextResponse.json(
+          { error: 'Backend configuration missing', details: 'NEXT_PUBLIC_API_BASE_URL or API_BASE_URL must be set in production' },
+          { status: 500 }
+        )
+      }
+      // Dev default
+      console.log('[API /run] Backend URL env var not set, using dev default: http://127.0.0.1:8000')
+    }
+    
+    const apiBase = (base || 'http://127.0.0.1:8000').replace(/\/$/, '')
     const railwayUrl = `${apiBase}/run`
+    
+    // Dev-only logging of resolved URL
+    if (!isProduction) {
+      console.log(`[API /run] Backend URL: ${railwayUrl}`)
+    }
 
     // Normalize clientId to lowercase (Railway expects: melrose, bestregard, fancy)
     const normalizedClientId = clientId.toLowerCase().trim()
@@ -163,13 +178,19 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      return NextResponse.json(
-        { 
-          error: 'Failed to reach backend',
-          details: fetchError.message || 'Network error'
-        },
-        { status: 502 }
-      )
+      // Dev-only: include backend URL in error details
+      const errorDetails: { error: string; details: string; backendUrl?: string; tip?: string } = {
+        error: 'Failed to reach backend',
+        details: fetchError.message || 'Network error',
+      }
+      
+      if (!isProduction) {
+        errorDetails.backendUrl = railwayUrl
+        errorDetails.tip = `Set NEXT_PUBLIC_API_BASE_URL in .env.local or start backend at ${apiBase}`
+        console.error(`[API /run] Failed to reach backend at ${railwayUrl}:`, fetchError.message)
+      }
+
+      return NextResponse.json(errorDetails, { status: 502 })
     }
 
   } catch (error: any) {

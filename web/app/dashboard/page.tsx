@@ -95,7 +95,19 @@ export default function DashboardPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || errorData.details || errorData.message || `HTTP ${response.status}`)
+        
+        // Build error message with dev-only details
+        let errorMessage = errorData.error || errorData.details || errorData.message || `HTTP ${response.status}`
+        
+        // In dev mode, append backend URL and tip if available
+        if (process.env.NODE_ENV !== 'production' && errorData.backendUrl) {
+          errorMessage += `\n\nBackend URL: ${errorData.backendUrl}`
+          if (errorData.tip) {
+            errorMessage += `\n${errorData.tip}`
+          }
+        }
+        
+        throw new Error(errorMessage)
       }
 
       const analysisData = await response.json()
