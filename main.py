@@ -272,13 +272,14 @@ async def run_analysis(request: RunRequest):
     # Force error switch to test JSON response bodies
     if request.params.get("__force_error") is True:
         logger.info(f"RUN_START force_error triggered request_id={request_id}")
+        # Test with 200 first to see if Railway strips 400 bodies
         return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=200,
             content={
                 "error": "ForcedError",
                 "request_id": request_id,
                 "clientId": request.clientId,
-                "note": "force error triggered"
+                "note": "force error triggered (200 status for testing)"
             }
         )
     
