@@ -427,3 +427,42 @@ body {
 .driver-overlay {
   background: rgba(0, 0, 0, 0.5) !important;
 }
+
+/* React Flow minimal styles (v1.0.3 doesn't include CSS) */
+.react-flow__node {
+  cursor: pointer;
+}
+
+.react-flow__edge {
+  cursor: pointer;
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-secondary);
+}
+
+.react-flow__controls {
+  background: var(--bg-secondary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+}
+
+.react-flow__controls-button {
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--card-border);
+  color: var(--text-primary);
+}
+
+.react-flow__controls-button:hover {
+  background: var(--bg-hover);
+}
+
+.react-flow__minimap {
+  background: var(--bg-secondary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+}
