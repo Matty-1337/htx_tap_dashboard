@@ -55,16 +55,16 @@ export default function DashboardPage() {
       const session = await sessionRes.json()
       setClientId(session.clientId)
 
-      // Then fetch analysis data
-      const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/run`, {
+      // Fetch analysis data through Next.js API route (same-origin)
+      const response = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId: session.clientId }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to fetch analysis data')
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || errorData.details || `HTTP ${response.status}: Failed to fetch analysis data`
+        throw new Error(errorMessage)
       }
 
       const analysisData = await response.json()
