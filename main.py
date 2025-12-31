@@ -157,7 +157,7 @@ async def debug_ping():
 @app.get("/debug/version")
 async def debug_version():
     """Deployment version marker for verifying latest commit is deployed"""
-    git_commit = os.getenv("GIT_COMMIT_SHA", "56c2c36")  # Fallback to current commit
+    git_commit = os.getenv("GIT_COMMIT_SHA", "2f1ba09")  # Fallback to current commit
     return {
         "git_commit": git_commit[:7] if len(git_commit) > 7 else git_commit,
         "deployed_at": datetime.utcnow().isoformat()
