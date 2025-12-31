@@ -46,17 +46,35 @@ export async function POST(request: NextRequest) {
     const apiBase = base.replace(/\/$/, '')
     const railwayUrl = `${apiBase}/run`
 
+    // Normalize clientId to lowercase (Railway expects: melrose, bestregard, fancy)
+    const normalizedClientId = clientId.toLowerCase().trim()
+
+    // Validate clientId matches expected values
+    const validClientIds = ['melrose', 'bestregard', 'fancy']
+    if (!validClientIds.includes(normalizedClientId)) {
+      return NextResponse.json(
+        { error: 'Invalid clientId', details: `clientId must be one of: ${validClientIds.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
     // Build request to Railway with timeout
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 120000) // 120s timeout
 
     try {
+      // Railway expects: { "clientId": "melrose", "params": {} }
+      const requestBody = { 
+        clientId: normalizedClientId,
+        params: {}
+      }
+      
       const response = await fetch(railwayUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ clientId }),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       })
 
