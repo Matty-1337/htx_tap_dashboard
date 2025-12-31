@@ -13,6 +13,7 @@ import { ActiveFilters } from '@/components/dashboard/ActiveFilters'
 import { TrendLineChart } from '@/components/dashboard/charts/TrendLineChart'
 import { BreakdownBarChart } from '@/components/dashboard/charts/BreakdownBarChart'
 import { DonutStatusChart } from '@/components/dashboard/charts/DonutStatusChart'
+import { ActionRail } from '@/components/dashboard/ActionRail'
 import { formatKey } from '@/lib/ui'
 import {
   getStatusBreakdown,
@@ -22,6 +23,7 @@ import {
   findColumn,
 } from '@/lib/data-utils'
 import { getClientThemeAttr } from '@/lib/brand'
+import { generateActions } from '@/lib/action-engine'
 import clsx from 'clsx'
 
 interface AnalysisData {
@@ -330,6 +332,10 @@ export default function DashboardPage() {
     return null
   }
 
+  // Generate action items
+  const actionItems = data ? generateActions(data, filters) : []
+  const topActions = actionItems.filter((a) => a.priority === 'high').slice(0, 3)
+
   // Extract KPIs
   const kpis = data?.kpis || {}
   const kpiEntries = Object.entries(kpis).slice(0, 6).map(([key, value]) => ({
@@ -413,7 +419,7 @@ export default function DashboardPage() {
         </div>
       </motion.header>
 
-      <div className="flex max-w-7xl mx-auto">
+      <div className="flex max-w-[1920px] mx-auto">
         {/* Left Navigation Rail */}
         <aside className="w-64 flex-shrink-0 sticky top-20 h-[calc(100vh-5rem)] pt-8 pl-6">
           <nav className="space-y-2">
@@ -578,6 +584,9 @@ export default function DashboardPage() {
             />
           </Section>
         </main>
+
+        {/* Right Action Rail */}
+        <ActionRail actions={actionItems} />
       </div>
     </div>
   )
