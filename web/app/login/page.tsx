@@ -13,6 +13,21 @@ export default function LoginPage() {
     // router.push('/melrose')
   }, [router])
 
+  // Handle client selection with host-aware navigation
+  const handleClientClick = (e: React.MouseEvent<HTMLAnchorElement>, clientId: string) => {
+    const hostname = window.location.hostname
+    
+    // If on admin host, navigate to client subdomain
+    if (hostname.startsWith('admin.')) {
+      e.preventDefault()
+      window.location.href = `https://${clientId}.htxtap.com`
+      return
+    }
+    
+    // Otherwise, let the Link component handle navigation normally
+    // (it will use relative path /melrose, /bestregard, /fancy)
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
@@ -27,18 +42,21 @@ export default function LoginPage() {
         <div className="mt-8 space-y-4">
           <Link
             href="/melrose"
+            onClick={(e) => handleClientClick(e, 'melrose')}
             className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
             Melrose
           </Link>
           <Link
             href="/bestregard"
+            onClick={(e) => handleClientClick(e, 'bestregard')}
             className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
             Bestregard
           </Link>
           <Link
             href="/fancy"
+            onClick={(e) => handleClientClick(e, 'fancy')}
             className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
             Fancy

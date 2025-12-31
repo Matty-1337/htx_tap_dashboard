@@ -7,6 +7,25 @@ const COOKIE_SECRET = process.env.COOKIE_SECRET || 'default-secret-change-in-pro
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const session = request.cookies.get('session')
+  const host = request.headers.get('host') || ''
+  const isAdminHost = host.startsWith('admin.')
+
+  // STEP 0a: Redirect /login on admin host to /admin
+  if (isAdminHost && pathname === '/login') {
+    return NextResponse.redirect(new URL('/admin', request.url))
+  }
+
+  // STEP 0b: Block client paths on admin host (sanity guard)
+  if (isAdminHost && /^\/(melrose|bestregard|fancy)(\/|$)/.test(pathname)) {
+    // Check if admin has viewClient set (via cookie or session)
+    const adminViewClient = request.cookies.get('admin_view_client')
+    if (adminViewClient) {
+      // Admin is viewing a client, redirect to dashboard
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+    // Otherwise redirect to admin page
+    return NextResponse.redirect(new URL('/admin', request.url))
+  }
 
   // STEP 0: Bypass rewrite for shared routes that must never be rewritten
   const BYPASS_PREFIXES = ['/dashboard', '/api', '/login', '/admin', '/_next']
@@ -18,7 +37,6 @@ export async function middleware(request: NextRequest) {
     // Continue to auth checks but skip subdomain rewrites
   } else {
     // STEP 1: Handle subdomain-based routing (rewrite, not redirect)
-    const host = request.headers.get('host') || ''
     const subdomain = resolveSubdomain(host)
 
     if (subdomain) {
