@@ -345,13 +345,15 @@ async def run_analysis(request: RunRequest):
         
         # Check for errors
         if isinstance(results, dict) and "error" in results:
-            logger.error(f"Analysis returned error: {results['error']}")
+            error_msg = results.get('error', 'Unknown error')
+            error_details = results.get('details', error_msg)
+            logger.error(f"Analysis returned error: {error_msg}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail={
                     "error": "AnalysisError",
-                    "details": results['error'],
-                    "message": f"{results['error']}. Hint: Verify that sales data CSV files exist in the client folder"
+                    "details": error_details,
+                    "message": f"{error_msg}. Hint: Upload CSV files to client-data/{folder}/"
                 }
             )
         

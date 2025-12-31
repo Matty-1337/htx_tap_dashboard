@@ -75,79 +75,95 @@ def load_csv_from_supabase(client, bucket, filepath):
         return None
 
 def load_all_data(client, bucket, folder) -> Dict[str, pd.DataFrame]:
-    """Load all CSV files from Supabase storage and return as dictionary of DataFrames"""
+    """Load all CSV files from Supabase storage and return as dictionary of DataFrames.
+    Loads ALL CSVs in the folder - no strict filtering by filename."""
+    import logging
+    logger = logging.getLogger(__name__)
     
     # Get all files
     files = client.storage.from_(bucket).list(folder)
-    csv_files = {f['name']: f for f in files if f.get('name', '').lower().endswith('.csv')}
+    csv_files = [f['name'] for f in files if f.get('name', '').lower().endswith('.csv')]
     
-    # Load sales files (October, November, December)
-    sales_files = []
-    for month in ['October', 'November', 'December']:
-        for filename in csv_files.keys():
-            if month.lower() in filename.lower() and 'sales' in filename.lower():
-                filepath = f"{folder}/{filename}" if folder else filename
-                df = load_csv_from_supabase(client, bucket, filepath)
-                if df is not None:
-                    df = clean_dataframe(df)
-                    sales_files.append(df)
-                    break
+    # Log CSV count and filenames (cap to first 50)
+    csv_count = len(csv_files)
+    csv_names_log = csv_files[:50]
+    logger.info(f"Found {csv_count} CSV file(s) in folder '{folder}': {csv_names_log}")
+    if csv_count > 50:
+        logger.info(f"... and {csv_count - 50} more CSV files")
     
-    if sales_files:
-        all_sales = pd.concat(sales_files, ignore_index=True)
+    if csv_count == 0:
+        logger.warning(f"No CSV files found in folder '{folder}'")
+        return {
+            'sales': pd.DataFrame(),
+            'voids': pd.DataFrame(),
+            'discounts': pd.DataFrame(),
+            'labor': pd.DataFrame(),
+            'removed': pd.DataFrame()
+        }
+    
+    # Load ALL CSV files and combine into sales
+    all_dataframes = []
+    voids = None
+    discounts = None
+    labor = None
+    removed = None
+    
+    for filename in csv_files:
+        filepath = f"{folder}/{filename}" if folder else filename
+        logger.info(f"Loading CSV: {filename}")
         
-        # Find date column
-        date_col = find_column_fuzzy(all_sales, ['Order Date', 'order_date', 'Sent Date', 'sent_date'])
+        try:
+            # Try multiple encodings
+            df = load_csv_from_supabase(client, bucket, filepath)
+            if df is None:
+                logger.warning(f"Failed to load {filename} - skipping")
+                continue
+            
+            df = clean_dataframe(df)
+            
+            # Try to categorize by filename (optional - for backwards compatibility)
+            filename_lower = filename.lower()
+            if 'void' in filename_lower and voids is None:
+                voids = df.copy()
+                void_date_col = find_column_fuzzy(voids, ['Void Date', 'void_date'])
+                if void_date_col:
+                    voids[void_date_col] = pd.to_datetime(voids[void_date_col], format='%m/%d/%Y %H:%M', errors='coerce')
+                logger.info(f"Categorized {filename} as voids")
+            elif 'discount' in filename_lower and discounts is None:
+                discounts = df.copy()
+                logger.info(f"Categorized {filename} as discounts")
+            elif 'labor' in filename_lower and labor is None:
+                labor = df.copy()
+                logger.info(f"Categorized {filename} as labor")
+            elif 'removed' in filename_lower and removed is None:
+                removed = df.copy()
+                logger.info(f"Categorized {filename} as removed")
+            else:
+                # Add to sales (all other CSVs go into sales)
+                all_dataframes.append(df)
+                logger.info(f"Added {filename} to sales data")
+        except Exception as e:
+            logger.error(f"Error loading {filename}: {str(e)}")
+            continue
+    
+    # Combine all sales dataframes
+    if all_dataframes:
+        all_sales = pd.concat(all_dataframes, ignore_index=True)
+        
+        # Find date column and add time-based columns
+        date_col = find_column_fuzzy(all_sales, ['Order Date', 'order_date', 'Sent Date', 'sent_date', 'Date', 'date'])
         if date_col:
+            # Try multiple date formats
             all_sales[date_col] = pd.to_datetime(all_sales[date_col], format='%m/%d/%y %I:%M %p', errors='coerce')
+            if all_sales[date_col].isna().all():
+                # Try alternative format
+                all_sales[date_col] = pd.to_datetime(all_sales[date_col], errors='coerce')
             all_sales['Hour'] = all_sales[date_col].dt.hour
             all_sales['DayOfWeek'] = all_sales[date_col].dt.day_name()
             all_sales['Date'] = all_sales[date_col].dt.date
     else:
         all_sales = pd.DataFrame()
-    
-    # Load voids
-    voids = None
-    for filename in csv_files.keys():
-        if 'void' in filename.lower():
-            filepath = f"{folder}/{filename}" if folder else filename
-            voids = load_csv_from_supabase(client, bucket, filepath)
-            if voids is not None:
-                voids = clean_dataframe(voids)
-                void_date_col = find_column_fuzzy(voids, ['Void Date', 'void_date'])
-                if void_date_col:
-                    voids[void_date_col] = pd.to_datetime(voids[void_date_col], format='%m/%d/%Y %H:%M', errors='coerce')
-                break
-    
-    # Load discounts
-    discounts = None
-    for filename in csv_files.keys():
-        if 'discount' in filename.lower():
-            filepath = f"{folder}/{filename}" if folder else filename
-            discounts = load_csv_from_supabase(client, bucket, filepath)
-            if discounts is not None:
-                discounts = clean_dataframe(discounts)
-                break
-    
-    # Load labor
-    labor = None
-    for filename in csv_files.keys():
-        if 'labor' in filename.lower():
-            filepath = f"{folder}/{filename}" if folder else filename
-            labor = load_csv_from_supabase(client, bucket, filepath)
-            if labor is not None:
-                labor = clean_dataframe(labor)
-                break
-    
-    # Load removed items
-    removed = None
-    for filename in csv_files.keys():
-        if 'removed' in filename.lower():
-            filepath = f"{folder}/{filename}" if folder else filename
-            removed = load_csv_from_supabase(client, bucket, filepath)
-            if removed is not None:
-                removed = clean_dataframe(removed)
-                break
+        logger.warning("No sales dataframes to combine")
     
     return {
         'sales': all_sales if not all_sales.empty else pd.DataFrame(),
@@ -804,7 +820,7 @@ def run_full_analysis(client, bucket, folder, upload_to_db: bool = False, report
     data = load_all_data(client, bucket, folder)
     
     if data['sales'].empty:
-        return {'error': 'No sales data found'}
+        return {'error': 'No CSV files found', 'details': f'No CSV files found in folder {folder}. Please upload CSV files to client-data/{folder}/'}
     
     # Run all analyses
     results = {}
