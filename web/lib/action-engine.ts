@@ -3,6 +3,7 @@
  */
 
 export type Priority = 'high' | 'medium' | 'low'
+export type Assignee = 'GM' | 'Manager 1' | 'Manager 2'
 
 export interface ActionItem {
   id: string
@@ -11,6 +12,7 @@ export interface ActionItem {
   rationale: string
   steps: string[]
   estimatedImpactUsd?: number
+  assignee: Assignee
   source: {
     report: string
     keys: Record<string, string | number>
@@ -112,6 +114,7 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
           'Confirm recipe/portioning and comps policy reminders.',
         ],
         estimatedImpactUsd: totalWaste > 0 ? totalWaste * 0.3 : undefined,
+        assignee: 'GM',
         source: {
           report: employeeData.length > 0 ? 'employee_performance' : 'waste_efficiency',
           keys: serverKey ? { [serverKey]: getStringValue(row, serverKey) } : {},
@@ -151,6 +154,7 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
           'Consider reprice/rename if needed for clarity.',
           'Retrain top sellers on proper preparation.',
         ],
+        assignee: 'GM',
         source: {
           report: 'menu_volatility',
           keys: itemKey ? { [itemKey]: getStringValue(row, itemKey) } : {},
@@ -176,6 +180,7 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
         'Give server shoutouts in pre-shift for top performers.',
         'Track attachment rate weekly and share results.',
       ],
+      assignee: 'GM',
       source: {
         report: 'kpis',
         keys: { food_attachment_rate: foodAttachmentRate },
@@ -195,6 +200,7 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
         'Highlight bottle options on the menu or table cards.',
         'Track bottle sales weekly and recognize top performers.',
       ],
+      assignee: 'GM',
       source: {
         report: 'kpis',
         keys: { bottle_conversion_pct: bottleConversionPct },
@@ -217,6 +223,7 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
         'Track improvements weekly.',
       ],
       estimatedImpactUsd: missedRevenue * 0.2,
+      assignee: 'GM',
       source: {
         report: 'kpis',
         keys: { missed_revenue: missedRevenue },
@@ -240,6 +247,7 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
           'Consider adding premium options or bundles.',
           'Track average check trends weekly.',
         ],
+        assignee: 'GM',
         source: {
           report: 'kpis',
           keys: { avg_check: avgCheck },

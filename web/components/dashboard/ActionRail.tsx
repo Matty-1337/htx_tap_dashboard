@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ActionItem, Priority } from '@/lib/action-engine'
+import { ActionItem, Priority, Assignee } from '@/lib/action-engine'
 import { PillBadge } from './PillBadge'
 import clsx from 'clsx'
 
@@ -15,6 +15,8 @@ export function ActionRail({ actions }: ActionRailProps) {
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set())
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [assignees, setAssignees] = useState<Record<string, Assignee>>({})
+  const [assigneeFilter, setAssigneeFilter] = useState<'All' | Assignee>('All')
 
   const openActions = actions.filter((a) => !completedIds.has(a.id))
   const completedActions = actions.filter((a) => completedIds.has(a.id))
@@ -68,16 +70,56 @@ export function ActionRail({ actions }: ActionRailProps) {
   }
 
   const copyActions = () => {
-    const markdown = displayActions
-      .map((action) => {
+    // Group actions by assignee
+    const groupedByAssignee: Record<Assignee, ActionItem[]> = {
+      'GM': [],
+      'Manager 1': [],
+      'Manager 2': [],
+    }
+
+    displayActions.forEach((action) => {
+      const assignee = assignees[action.id] ?? action.assignee ?? 'GM'
+      groupedByAssignee[assignee].push(action)
+    })
+
+    // Build markdown grouped by assignee
+    const sections: string[] = []
+    
+    if (groupedByAssignee['GM'].length > 0) {
+      sections.push('# GM Action Items\n')
+      sections.push('## GM')
+      groupedByAssignee['GM'].forEach((action) => {
         const priorityEmoji = { high: '🔴', medium: '🟡', low: '🟢' }[action.priority]
         const impact = action.estimatedImpactUsd
           ? ` (Est. upside: $${action.estimatedImpactUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })})`
           : ''
-        return `## ${priorityEmoji} ${action.title}${impact}\n\n${action.rationale}\n\n**Steps:**\n${action.steps.map((s) => `- ${s}`).join('\n')}`
+        sections.push(`\n**${priorityEmoji} ${action.title}${impact}**\n${action.rationale}\n${action.steps.slice(0, 3).map((s) => `- ${s}`).join('\n')}`)
       })
-      .join('\n\n---\n\n')
+    }
 
+    if (groupedByAssignee['Manager 1'].length > 0) {
+      sections.push('\n\n## Manager 1')
+      groupedByAssignee['Manager 1'].forEach((action) => {
+        const priorityEmoji = { high: '🔴', medium: '🟡', low: '🟢' }[action.priority]
+        const impact = action.estimatedImpactUsd
+          ? ` (Est. upside: $${action.estimatedImpactUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })})`
+          : ''
+        sections.push(`\n**${priorityEmoji} ${action.title}${impact}**\n${action.rationale}\n${action.steps.slice(0, 3).map((s) => `- ${s}`).join('\n')}`)
+      })
+    }
+
+    if (groupedByAssignee['Manager 2'].length > 0) {
+      sections.push('\n\n## Manager 2')
+      groupedByAssignee['Manager 2'].forEach((action) => {
+        const priorityEmoji = { high: '🔴', medium: '🟡', low: '🟢' }[action.priority]
+        const impact = action.estimatedImpactUsd
+          ? ` (Est. upside: $${action.estimatedImpactUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })})`
+          : ''
+        sections.push(`\n**${priorityEmoji} ${action.title}${impact}**\n${action.rationale}\n${action.steps.slice(0, 3).map((s) => `- ${s}`).join('\n')}`)
+      })
+    }
+
+    const markdown = sections.join('\n')
     navigator.clipboard.writeText(markdown)
     // Could add a toast notification here
   }
@@ -160,6 +202,7 @@ export function ActionRail({ actions }: ActionRailProps) {
                 const isExpanded = expandedIds.has(action.id)
                 const isPinned = pinnedIds.has(action.id)
                 const priorityStyle = getPriorityColor(action.priority)
+                const assignee = assignees[action.id] ?? action.assignee ?? 'GM'
 
                 return (
                   <motion.div
@@ -198,6 +241,60 @@ export function ActionRail({ actions }: ActionRailProps) {
                           {action.title}
                         </h3>
                       </div>
+                    </div>
+
+                    {/* Assignee Dropdown */}
+                    <div className="mb-2">
+                      <label className="text-xs muted mb-1 block">Assigned to</label>
+                      <select
+                        value={assignee}
+                        onChange={(e) => setAssigneeFor(action.id, e.target.value as Assignee)}
+                        className="w-full text-xs px-2 py-1 transition-colors"
+                        style={{
+                          backgroundColor: 'var(--surface)',
+                          border: '1px solid var(--card-border)',
+                          color: 'var(--text)',
+                          borderRadius: 'var(--radius)',
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.outline = '2px solid var(--primary)'
+                          e.target.style.outlineOffset = '2px'
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.outline = 'none'
+                        }}
+                      >
+                        <option value="GM">GM</option>
+                        <option value="Manager 1">Manager 1</option>
+                        <option value="Manager 2">Manager 2</option>
+                      </select>
+                    </div>
+
+                    {/* Assignee Dropdown */}
+                    <div className="mb-2">
+                      <label className="text-xs muted mb-1 block">Assigned to</label>
+                      <select
+                        value={assignee}
+                        onChange={(e) => setAssigneeFor(action.id, e.target.value as Assignee)}
+                        className="w-full text-xs px-2 py-1 transition-colors"
+                        style={{
+                          backgroundColor: 'var(--surface)',
+                          border: '1px solid var(--card-border)',
+                          color: 'var(--text)',
+                          borderRadius: 'var(--radius)',
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.outline = '2px solid var(--primary)'
+                          e.target.style.outlineOffset = '2px'
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.outline = 'none'
+                        }}
+                      >
+                        <option value="GM">GM</option>
+                        <option value="Manager 1">Manager 1</option>
+                        <option value="Manager 2">Manager 2</option>
+                      </select>
                     </div>
 
                     {/* Impact */}
