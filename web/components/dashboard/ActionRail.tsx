@@ -304,33 +304,6 @@ export function ActionRail({ actions }: ActionRailProps) {
                       </select>
                     </div>
 
-                    {/* Assignee Dropdown */}
-                    <div className="mb-2">
-                      <label className="text-xs muted mb-1 block">Assigned to</label>
-                      <select
-                        value={assignee}
-                        onChange={(e) => setAssigneeFor(action.id, e.target.value as Assignee)}
-                        className="w-full text-xs px-2 py-1 transition-colors"
-                        style={{
-                          backgroundColor: 'var(--surface)',
-                          border: '1px solid var(--card-border)',
-                          color: 'var(--text)',
-                          borderRadius: 'var(--radius)',
-                        }}
-                        onFocus={(e) => {
-                          e.target.style.outline = '2px solid var(--primary)'
-                          e.target.style.outlineOffset = '2px'
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.outline = 'none'
-                        }}
-                      >
-                        <option value="GM">GM</option>
-                        <option value="Manager 1">Manager 1</option>
-                        <option value="Manager 2">Manager 2</option>
-                      </select>
-                    </div>
-
                     {/* Impact */}
                     {action.estimatedImpactUsd && (
                       <div className="text-xs mb-2" style={{ color: 'var(--secondary)' }}>
