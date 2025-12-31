@@ -23,7 +23,7 @@ import {
   findColumn,
 } from '@/lib/data-utils'
 import { getClientThemeAttr } from '@/lib/brand'
-import { generateActions } from '@/lib/action-engine'
+import { ActionItem } from '@/lib/action-engine'
 import clsx from 'clsx'
 
 interface AnalysisData {
@@ -332,8 +332,51 @@ export default function DashboardPage() {
     return null
   }
 
-  // Generate action items
-  const actionItems = data ? generateActions(data, filters) : []
+  // Load persisted action items from Supabase
+  const [actionItems, setActionItems] = useState<ActionItem[]>([])
+  const [actionsLoading, setActionsLoading] = useState(true)
+
+  // Fetch actions on mount
+  useEffect(() => {
+    const fetchActions = async () => {
+      try {
+        const response = await fetch('/api/actions')
+        if (response.ok) {
+          const result = await response.json()
+          setActionItems(result.actions || [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch actions:', err)
+      } finally {
+        setActionsLoading(false)
+      }
+    }
+
+    fetchActions()
+  }, [])
+
+  // Generate and persist actions when "Run Analysis" completes
+  useEffect(() => {
+    if (data && !loading && !actionsLoading) {
+      const generateAndPersist = async () => {
+        try {
+          const response = await fetch('/api/actions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload: data, filters }),
+          })
+          if (response.ok) {
+            const result = await response.json()
+            setActionItems(result.actions || [])
+          }
+        } catch (err) {
+          console.error('Failed to generate/persist actions:', err)
+        }
+      }
+      generateAndPersist()
+    }
+  }, [data, loading, filters, actionsLoading])
+
   const topActions = actionItems.filter((a) => a.priority === 'high').slice(0, 3)
 
   // Extract KPIs

@@ -8,9 +8,10 @@ import clsx from 'clsx'
 
 interface ActionRailProps {
   actions: ActionItem[]
+  onActionUpdate?: () => void
 }
 
-export function ActionRail({ actions }: ActionRailProps) {
+export function ActionRail({ actions, onActionUpdate }: ActionRailProps) {
   const [activeTab, setActiveTab] = useState<'open' | 'completed'>('open')
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set())
@@ -44,17 +45,45 @@ export function ActionRail({ actions }: ActionRailProps) {
 
   const displayActions = activeTab === 'open' ? sortedActions : completedActions
 
-  const setAssigneeFor = (id: string, value: Assignee) => {
+  const setAssigneeFor = async (id: string, value: Assignee) => {
     setAssignees((prev) => ({ ...prev, [id]: value }))
+    
+    // Persist to Supabase
+    try {
+      const response = await fetch(`/api/actions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignee: value }),
+      })
+      if (response.ok && onActionUpdate) {
+        onActionUpdate()
+      }
+    } catch (err) {
+      console.error('Failed to update assignee:', err)
+    }
   }
 
-  const handleMarkDone = (id: string) => {
+  const handleMarkDone = async (id: string) => {
     setCompletedIds((prev) => new Set([...prev, id]))
     setPinnedIds((prev) => {
       const next = new Set(prev)
       next.delete(id)
       return next
     })
+    
+    // Persist to Supabase
+    try {
+      const response = await fetch(`/api/actions/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'done' }),
+      })
+      if (response.ok && onActionUpdate) {
+        onActionUpdate()
+      }
+    } catch (err) {
+      console.error('Failed to mark done:', err)
+    }
   }
 
   const handlePin = (id: string) => {

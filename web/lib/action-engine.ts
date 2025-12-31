@@ -16,6 +16,7 @@ export interface ActionItem {
   source: {
     report: string
     keys: Record<string, string | number>
+    dedupe_key?: string
   }
 }
 
@@ -142,6 +143,8 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
     volatileItems.slice(0, 2).forEach((row) => {
       const itemName = itemKey ? getStringValue(row, itemKey) : 'Menu Item'
       const volatility = getNumericValue(row, volatilityKey)
+      const itemValue = itemKey ? getStringValue(row, itemKey) : ''
+      const dedupeKey = `menu:item=${itemValue}`
 
       actions.push({
         id: actionId(),
@@ -157,7 +160,8 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
         assignee: 'GM',
         source: {
           report: 'menu_volatility',
-          keys: itemKey ? { [itemKey]: getStringValue(row, itemKey) } : {},
+          keys: itemKey ? { [itemKey]: itemValue } : {},
+          dedupe_key: dedupeKey,
         },
       })
     })
