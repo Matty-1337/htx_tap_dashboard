@@ -148,6 +148,60 @@ async def health_check():
     """Health check endpoint"""
     return {"ok": True, "timestamp": datetime.utcnow().isoformat()}
 
+@app.get("/debug/ping")
+async def debug_ping():
+    """Minimal debug endpoint that cannot fail"""
+    return {"ok": True, "ts": datetime.utcnow().isoformat()}
+
+@app.post("/debug/echo")
+async def debug_echo(request: Request):
+    """Echo endpoint to test if requests reach FastAPI"""
+    try:
+        # Log request details
+        content_type = request.headers.get("content-type", "")
+        content_length = request.headers.get("content-length", "unknown")
+        logger.info(f"DEBUG ECHO: method=POST, path=/debug/echo, content-type={content_type}, content-length={content_length}")
+        
+        # Get safe headers subset
+        safe_headers = {}
+        safe_header_names = [
+            "content-type", "content-length", "user-agent",
+            "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "host"
+        ]
+        for name in safe_header_names:
+            value = request.headers.get(name)
+            if value:
+                safe_headers[name] = value
+        
+        # Read and parse body
+        body_bytes = await request.body()
+        
+        # Try to parse as JSON
+        try:
+            body_text = body_bytes.decode('utf-8')
+            body_json = json.loads(body_text)
+            return {
+                "ok": True,
+                "headers": safe_headers,
+                "json": body_json
+            }
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            # Return raw body (first 200 chars) if JSON parse fails
+            body_preview = body_bytes[:200].decode('utf-8', errors='replace')
+            return {
+                "ok": False,
+                "raw": body_preview,
+                "error": str(e),
+                "headers": safe_headers
+            }
+    except Exception as e:
+        logger.error(f"DEBUG ECHO error: {str(e)}")
+        return {
+            "ok": False,
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
+
 @app.get("/test-supabase")
 async def test_supabase():
     """Test Supabase connection"""
