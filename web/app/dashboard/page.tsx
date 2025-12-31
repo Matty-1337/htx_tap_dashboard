@@ -21,6 +21,7 @@ import {
   calculateKpiFromData,
   findColumn,
 } from '@/lib/data-utils'
+import { getClientThemeAttr } from '@/lib/brand'
 import clsx from 'clsx'
 
 interface AnalysisData {
@@ -175,12 +176,15 @@ export default function DashboardPage() {
     ? data.clientId.charAt(0).toUpperCase() + data.clientId.slice(1)
     : 'Analytics'
 
+  // Get theme attribute for CSS binding
+  const themeAttr = data?.clientId ? getClientThemeAttr(data.clientId) : 'default'
+
   // Loading state
   if (loading && !data) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      <div data-client-theme="default" className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
         {/* Sticky Header Skeleton */}
-        <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm">
+        <div className="sticky top-0 z-50 backdrop-blur-md border-b shadow-sm" style={{ backgroundColor: 'rgba(var(--surface-rgb, 255, 255, 255), 0.8)', borderColor: 'var(--card-border)' }}>
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               <div className="h-8 w-64 bg-gray-200 rounded animate-pulse" />
@@ -206,7 +210,7 @@ export default function DashboardPage() {
   // Error state
   if (error && !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+      <div data-client-theme="default" className="min-h-screen flex items-center justify-center bg-[var(--bg)] text-[var(--text)]">
         <GlassCard className="max-w-md">
           <div className="p-8 text-center">
             <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -312,36 +316,50 @@ export default function DashboardPage() {
   }))
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
+    <div data-client-theme={themeAttr} className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
       {/* Sticky Header */}
       <motion.header
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm"
+        className="sticky top-0 z-50 backdrop-blur-md border-b shadow-sm"
+        style={{
+          backgroundColor: 'rgba(var(--surface-rgb, 255, 255, 255), 0.8)',
+          borderColor: 'var(--card-border)',
+        }}
       >
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <h1 className="text-2xl font-bold text-gray-900">HTX TAP Analytics</h1>
-              <span className="text-gray-400">•</span>
-              <span className="text-lg font-medium text-gray-700">{clientName}</span>
+              <h1 className="text-2xl font-bold" style={{ color: 'var(--text)' }}>HTX TAP Analytics</h1>
+              <span style={{ color: 'var(--muted)' }}>•</span>
+              <span className="text-lg font-medium" style={{ color: 'var(--text)' }}>{clientName}</span>
             </div>
             <div className="flex items-center gap-4">
-              <div className="text-sm text-gray-600">
+              <div className="text-sm" style={{ color: 'var(--muted)' }}>
                 <div>Last updated {formatTime(data?.generatedAt)}</div>
                 {data?.executionTimeSeconds && (
-                  <div className="text-xs text-gray-500">Execution {data.executionTimeSeconds}s</div>
+                  <div className="text-xs">Execution {data.executionTimeSeconds}s</div>
                 )}
               </div>
               <button
                 onClick={handleRunAnalysis}
                 disabled={isRunning}
                 className={clsx(
-                  'px-4 py-2 rounded-lg font-medium transition-all',
-                  'bg-indigo-600 text-white hover:bg-indigo-700',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                  'shadow-lg shadow-indigo-200/50 hover:shadow-xl hover:shadow-indigo-300/50'
+                  'px-4 py-2 font-medium transition-all',
+                  'text-white',
+                  'disabled:opacity-50 disabled:cursor-not-allowed'
                 )}
+                style={{
+                  backgroundColor: 'var(--primary)',
+                  borderRadius: 'var(--radius)',
+                  boxShadow: 'var(--shadow)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = 'var(--glow)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = 'var(--shadow)'
+                }}
               >
                 {isRunning ? 'Running...' : 'Run Analysis'}
               </button>
@@ -365,11 +383,23 @@ export default function DashboardPage() {
                 key={section.id}
                 onClick={() => scrollToSection(section.id)}
                 className={clsx(
-                  'w-full text-left px-4 py-2 rounded-lg transition-all',
-                  activeSection === section.id
-                    ? 'bg-indigo-50 text-indigo-700 font-medium shadow-sm'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  'w-full text-left px-4 py-2 transition-all'
                 )}
+                style={{
+                  borderRadius: 'var(--radius)',
+                  color: activeSection === section.id ? 'var(--primary)' : 'var(--muted)',
+                  backgroundColor: activeSection === section.id ? 'rgba(var(--primary-rgb, 99, 102, 241), 0.1)' : 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  if (activeSection !== section.id) {
+                    e.currentTarget.style.backgroundColor = 'rgba(var(--muted-rgb, 107, 114, 128), 0.1)'
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeSection !== section.id) {
+                    e.currentTarget.style.backgroundColor = 'transparent'
+                  }
+                }}
               >
                 {section.label}
               </button>

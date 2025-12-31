@@ -19,7 +19,25 @@ export function GlassCard({ children, className, hover = true, delay = 0 }: Glas
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay }}
       whileHover={hover ? { y: -4, transition: { duration: 0.2 } } : undefined}
-      className={clsx(cardStyles.base, hover && cardStyles.hover, className)}
+      className={clsx(className)}
+      style={{
+        backgroundColor: 'var(--surface)',
+        borderColor: 'var(--card-border)',
+        borderRadius: 'var(--radius)',
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        boxShadow: 'var(--shadow)',
+      }}
+      onMouseEnter={(e) => {
+        if (hover) {
+          e.currentTarget.style.boxShadow = 'var(--glow), var(--shadow)'
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (hover) {
+          e.currentTarget.style.boxShadow = 'var(--shadow)'
+        }
+      }}
     >
       {children}
     </motion.div>
