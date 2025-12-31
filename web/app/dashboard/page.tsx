@@ -372,19 +372,19 @@ export default function DashboardPage() {
             
             {/* Server Grade + Actions Skeleton */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              <SkeletonKpiCard height="h-64" />
-              <SkeletonKpiCard height="h-64" />
+              <SkeletonKpiCard />
+              <SkeletonKpiCard />
             </div>
             
             {/* Heatmap Skeleton */}
             <div className="mb-8">
-              <SkeletonKpiCard height="h-96" />
+              <SkeletonKpiCard />
             </div>
             
             {/* Bottom Row Skeleton */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <SkeletonKpiCard height="h-64" />
-              <SkeletonKpiCard height="h-64" />
+              <SkeletonKpiCard />
+              <SkeletonKpiCard />
             </div>
           </div>
         </div>
