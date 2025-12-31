@@ -8,30 +8,40 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const session = request.cookies.get('session')
 
-  // STEP 1: Handle subdomain-based routing (rewrite, not redirect)
-  const host = request.headers.get('host') || ''
-  const subdomain = resolveSubdomain(host)
+  // STEP 0: Bypass rewrite for shared routes that must never be rewritten
+  const BYPASS_PREFIXES = ['/dashboard', '/api', '/login', '/admin', '/_next']
+  const shouldBypass = 
+    BYPASS_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/')) ||
+    pathname === '/favicon.ico'
+  
+  if (shouldBypass) {
+    // Continue to auth checks but skip subdomain rewrites
+  } else {
+    // STEP 1: Handle subdomain-based routing (rewrite, not redirect)
+    const host = request.headers.get('host') || ''
+    const subdomain = resolveSubdomain(host)
 
-  if (subdomain) {
-    // Client subdomain (melrose, fancy, bestregard)
-    if (subdomain === 'melrose' || subdomain === 'fancy' || subdomain === 'bestregard') {
-      // If pathname already starts with /[client], skip rewrite
-      if (!pathname.startsWith(`/${subdomain}`)) {
-        // Rewrite to /[client]/[pathname] for seamless routing
-        const rewritePath = pathname === '/' ? `/${subdomain}` : `/${subdomain}${pathname}`
-        const rewriteUrl = new URL(rewritePath, request.url)
-        return NextResponse.rewrite(rewriteUrl)
+    if (subdomain) {
+      // Client subdomain (melrose, fancy, bestregard)
+      if (subdomain === 'melrose' || subdomain === 'fancy' || subdomain === 'bestregard') {
+        // If pathname already starts with /[client], skip rewrite
+        if (!pathname.startsWith(`/${subdomain}`)) {
+          // Rewrite to /[client]/[pathname] for seamless routing
+          const rewritePath = pathname === '/' ? `/${subdomain}` : `/${subdomain}${pathname}`
+          const rewriteUrl = new URL(rewritePath, request.url)
+          return NextResponse.rewrite(rewriteUrl)
+        }
       }
-    }
 
-    // Admin subdomain
-    if (subdomain === 'admin') {
-      // If pathname already starts with /admin, skip rewrite
-      if (!pathname.startsWith('/admin')) {
-        // Rewrite to /admin or /admin/[pathname]
-        const rewritePath = pathname === '/' ? '/admin' : `/admin${pathname}`
-        const rewriteUrl = new URL(rewritePath, request.url)
-        return NextResponse.rewrite(rewriteUrl)
+      // Admin subdomain
+      if (subdomain === 'admin') {
+        // If pathname already starts with /admin, skip rewrite
+        if (!pathname.startsWith('/admin')) {
+          // Rewrite to /admin or /admin/[pathname]
+          const rewritePath = pathname === '/' ? '/admin' : `/admin${pathname}`
+          const rewriteUrl = new URL(rewritePath, request.url)
+          return NextResponse.rewrite(rewriteUrl)
+        }
       }
     }
   }
