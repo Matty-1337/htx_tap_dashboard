@@ -154,6 +154,15 @@ async def debug_ping():
     """Minimal debug endpoint that cannot fail"""
     return {"ok": True, "ts": datetime.utcnow().isoformat()}
 
+@app.get("/debug/version")
+async def debug_version():
+    """Deployment version marker for verifying latest commit is deployed"""
+    git_commit = os.getenv("GIT_COMMIT_SHA", "a9f6414")  # Fallback to current commit
+    return {
+        "git_commit": git_commit[:7] if len(git_commit) > 7 else git_commit,
+        "deployed_at": datetime.utcnow().isoformat()
+    }
+
 @app.post("/debug/echo")
 async def debug_echo(request: Request):
     """Echo endpoint to test if requests reach FastAPI"""
