@@ -1,17 +1,16 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from 'recharts'
+import { motion, AnimatePresence } from 'framer-motion'
+import { GlassCard } from '@/components/dashboard/GlassCard'
+import { KpiCard } from '@/components/dashboard/KpiCard'
+import { SkeletonKpiCard, SkeletonTable } from '@/components/dashboard/SkeletonCard'
+import { Section } from '@/components/dashboard/Section'
+import { DataTablePreview } from '@/components/dashboard/DataTablePreview'
+import { PillBadge } from '@/components/dashboard/PillBadge'
+import { formatKey } from '@/lib/ui'
+import clsx from 'clsx'
 
 interface AnalysisData {
   clientId?: string
@@ -29,36 +28,42 @@ interface AnalysisData {
     [key: string]: any
   }
   executionTimeSeconds?: number
-  [key: string]: any // Allow additional keys
+  [key: string]: any
 }
+
+const NAV_SECTIONS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'waste', label: 'Waste' },
+  { id: 'team', label: 'Team' },
+  { id: 'menu', label: 'Menu' },
+]
 
 export default function DashboardPage() {
   const [data, setData] = useState<AnalysisData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [clientId, setClientId] = useState('')
+  const [activeSection, setActiveSection] = useState('overview')
+  const [isRunning, setIsRunning] = useState(false)
   const router = useRouter()
+  const sectionRefs = useRef<Record<string, HTMLElement>>({})
 
-  useEffect(() => {
-    // Get clientId from session (we'll extract it from the API response)
-    fetchAnalysis()
-  }, [])
+  const handleLogout = async () => {
+    await fetch('/api/logout', { method: 'POST' })
+    router.push('/login')
+  }
 
+  // Fetch analysis data
   const fetchAnalysis = async () => {
     setLoading(true)
     setError('')
 
     try {
-      // First, get clientId from session via API
       const sessionRes = await fetch('/api/session')
       if (!sessionRes.ok) {
         router.push('/login')
         return
       }
-      const session = await sessionRes.json()
-      setClientId(session.clientId)
 
-      // Fetch analysis data through Next.js API route (same-origin)
       const response = await fetch('/api/run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -72,7 +77,7 @@ export default function DashboardPage() {
 
       const analysisData = await response.json()
       
-      // Guard against oversized payloads - limit table rows to 500
+      // Guard against oversized payloads
       if (analysisData.tables) {
         Object.keys(analysisData.tables).forEach(key => {
           if (analysisData.tables[key]?.data && Array.isArray(analysisData.tables[key].data)) {
@@ -89,210 +94,272 @@ export default function DashboardPage() {
     }
   }
 
-  const handleLogout = async () => {
-    await fetch('/api/logout', { method: 'POST' })
-    router.push('/login')
+  // Run analysis
+  const handleRunAnalysis = async () => {
+    setIsRunning(true)
+    await fetchAnalysis()
+    setIsRunning(false)
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading dashboard...</div>
-      </div>
-    )
-  }
+  useEffect(() => {
+    fetchAnalysis()
+  }, [])
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-bold text-red-600 mb-2">Error Loading Dashboard</h2>
-          <p className="text-gray-700">{error}</p>
-          <button
-            onClick={() => router.push('/login')}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-          >
-            Return to Login
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  if (!data) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">No data available</div>
-      </div>
-    )
-  }
-
-  // Prepare chart data with safe optional chaining
-  const chartData = data?.charts?.hourly_revenue?.map((item: any) => ({
-    hour: item?.Hour || item?.hour || 0,
-    revenue: item?.['Net Price'] || item?.revenue || item?.Revenue || 0,
-  })).filter((item: any) => item.revenue > 0) || []
-
-  // Find first available table (schema-tolerant)
-  const findFirstTable = () => {
-    if (!data?.tables) return null
-    
-    // Try known table keys first
-    const knownKeys = ['waste_efficiency', 'employee_performance', 'menu_volatility']
-    for (const key of knownKeys) {
-      const table = data.tables[key]
-      if (table?.data && Array.isArray(table.data) && table.data.length > 0) {
-        return { key, ...table }
-      }
+  // Scrollspy for navigation
+  useEffect(() => {
+    const observerOptions = {
+      root: null,
+      rootMargin: '-20% 0px -70% 0px',
+      threshold: 0,
     }
-    
-    // Fallback: find any table with data array
-    for (const [key, value] of Object.entries(data.tables)) {
-      if (value && typeof value === 'object' && 'data' in value) {
-        const table = value as any
-        if (Array.isArray(table.data) && table.data.length > 0) {
-          return { key, ...table }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          setActiveSection(entry.target.id)
         }
-      }
+      })
+    }, observerOptions)
+
+    Object.values(sectionRefs.current).forEach((el) => {
+      if (el) observer.observe(el)
+    })
+
+    return () => observer.disconnect()
+  }, [data])
+
+  // Scroll to section
+  const scrollToSection = (id: string) => {
+    const element = sectionRefs.current[id]
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
-    
-    return null
   }
 
-  const firstTable = findFirstTable()
-  const tableData = firstTable?.data?.slice(0, 50) || [] // Limit to 50 rows
-  const tableColumns = firstTable?.columns || (tableData.length > 0 ? Object.keys(tableData[0]).slice(0, 10) : []) // Limit to 10 columns
+  // Format time
+  const formatTime = (timestamp?: string) => {
+    if (!timestamp) return 'Never'
+    try {
+      const date = new Date(timestamp)
+      return date.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    } catch {
+      return 'Invalid date'
+    }
+  }
 
-  // Extract KPIs with fallback
-  const kpis = data?.kpis || {}
-  const kpiEntries = Object.entries(kpis).slice(0, 6) // Limit to 6 KPIs
+  // Get client name
+  const clientName = data?.clientId
+    ? data.clientId.charAt(0).toUpperCase() + data.clientId.slice(1)
+    : 'Analytics'
 
-  return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            {(data?.clientId || clientId || 'Analytics').charAt(0).toUpperCase() + (data?.clientId || clientId || 'Analytics').slice(1)} Analytics Dashboard
-          </h1>
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-          >
-            Logout
-          </button>
-        </div>
-
-        {/* Success Banner */}
-        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded mb-6">
-          <div className="flex items-center">
-            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-            </svg>
-            <span className="font-semibold">Run succeeded</span>
-          </div>
-        </div>
-
-        {/* KPI Cards */}
-        {kpiEntries.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-            {kpiEntries.map(([key, value]) => (
-              <div key={key} className="bg-white p-6 rounded-lg shadow">
-                <div className="text-sm text-gray-600 capitalize">
-                  {key.replace(/_/g, ' ')}
-                </div>
-                <div className="text-2xl font-bold text-gray-900 mt-2">
-                  {typeof value === 'number' 
-                    ? (key.includes('pct') || key.includes('rate') 
-                        ? `${value.toFixed(2)}%` 
-                        : key.includes('revenue') || key.includes('premium')
-                        ? `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : value.toLocaleString())
-                    : String(value)}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-6">
-            <p>No KPIs available. Available keys: {Object.keys(data).join(', ')}</p>
-          </div>
-        )}
-
-        {/* Chart */}
-        {chartData.length > 0 && (
-          <div className="bg-white p-6 rounded-lg shadow mb-8">
-            <h2 className="text-xl font-semibold mb-4">Revenue by Hour</h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="hour" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="revenue" stroke="#8884d8" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* Table */}
-        {tableData.length > 0 ? (
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">
-              {firstTable?.key === 'waste_efficiency' ? 'Waste Efficiency' :
-               firstTable?.key === 'employee_performance' ? 'Employee Performance' :
-               firstTable?.key === 'menu_volatility' ? 'Menu Volatility' :
-               firstTable?.key ? firstTable.key.replace(/_/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase()) :
-               'Data Preview'}
-            </h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Showing {tableData.length} of {firstTable?.data?.length || tableData.length} rows, {tableColumns.length} columns
-            </p>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    {tableColumns.map((col: string) => (
-                      <th
-                        key={col}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                      >
-                        {col}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {tableData.map((row: any, idx: number) => (
-                    <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      {tableColumns.map((col: string) => {
-                        const value = row?.[col]
-                        return (
-                          <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {value !== null && value !== undefined 
-                              ? (typeof value === 'number' 
-                                  ? value.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                                  : String(value))
-                              : '-'}
-                          </td>
-                        )
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+  // Loading state
+  if (loading && !data) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        {/* Sticky Header Skeleton */}
+        <div className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="h-8 w-64 bg-gray-200 rounded animate-pulse" />
+              <div className="h-8 w-48 bg-gray-200 rounded animate-pulse" />
             </div>
           </div>
-        ) : (
-          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded mb-6">
-            <p>No table data available. Tables found: {data?.tables ? Object.keys(data.tables).join(', ') : 'none'}</p>
-          </div>
-        )}
-
-        <div className="mt-8 text-sm text-gray-500">
-          {data?.generatedAt && `Generated at: ${new Date(data.generatedAt).toLocaleString()} | `}
-          {data?.executionTimeSeconds && `Execution time: ${data.executionTimeSeconds}s`}
         </div>
+
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+            {[...Array(6)].map((_, i) => (
+              <SkeletonKpiCard key={i} />
+            ))}
+          </div>
+          {[...Array(3)].map((_, i) => (
+            <SkeletonTable key={i} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error && !data) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+        <GlassCard className="max-w-md">
+          <div className="p-8 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-2">Error Loading Dashboard</h2>
+            <p className="text-gray-600 mb-6">{error}</p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => router.push('/login')}
+                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Back to Login
+              </button>
+              <button
+                onClick={fetchAnalysis}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
+    )
+  }
+
+  // Extract KPIs
+  const kpis = data?.kpis || {}
+  const kpiEntries = Object.entries(kpis).slice(0, 6)
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
+      {/* Sticky Header */}
+      <motion.header
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm"
+      >
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <h1 className="text-2xl font-bold text-gray-900">HTX TAP Analytics</h1>
+              <span className="text-gray-400">•</span>
+              <span className="text-lg font-medium text-gray-700">{clientName}</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-600">
+                <div>Last updated {formatTime(data?.generatedAt)}</div>
+                {data?.executionTimeSeconds && (
+                  <div className="text-xs text-gray-500">Execution {data.executionTimeSeconds}s</div>
+                )}
+              </div>
+              <button
+                onClick={handleRunAnalysis}
+                disabled={isRunning}
+                className={clsx(
+                  'px-4 py-2 rounded-lg font-medium transition-all',
+                  'bg-indigo-600 text-white hover:bg-indigo-700',
+                  'disabled:opacity-50 disabled:cursor-not-allowed',
+                  'shadow-lg shadow-indigo-200/50 hover:shadow-xl hover:shadow-indigo-300/50'
+                )}
+              >
+                {isRunning ? 'Running...' : 'Run Analysis'}
+              </button>
+              <button
+                onClick={handleLogout}
+                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </motion.header>
+
+      <div className="flex max-w-7xl mx-auto">
+        {/* Left Navigation Rail */}
+        <aside className="w-64 flex-shrink-0 sticky top-20 h-[calc(100vh-5rem)] pt-8 pl-6">
+          <nav className="space-y-2">
+            {NAV_SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                onClick={() => scrollToSection(section.id)}
+                className={clsx(
+                  'w-full text-left px-4 py-2 rounded-lg transition-all',
+                  activeSection === section.id
+                    ? 'bg-indigo-50 text-indigo-700 font-medium shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                )}
+              >
+                {section.label}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 px-6 py-8">
+          {/* Overview Section */}
+          <Section
+            id="overview"
+            title="Overview"
+            ref={(el) => {
+              if (el) sectionRefs.current.overview = el
+            }}
+          >
+            <AnimatePresence>
+              {kpiEntries.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {kpiEntries.map(([key, value], idx) => (
+                    <KpiCard key={key} label={key} value={value} delay={idx * 0.1} />
+                  ))}
+                </div>
+              ) : (
+                <GlassCard>
+                  <div className="p-6 text-center text-gray-500">
+                    <p>No KPIs available</p>
+                  </div>
+                </GlassCard>
+              )}
+            </AnimatePresence>
+          </Section>
+
+          {/* Waste Section */}
+          <Section
+            id="waste"
+            title="Waste Efficiency"
+            ref={(el) => {
+              if (el) sectionRefs.current.waste = el
+            }}
+          >
+            <DataTablePreview
+              data={data?.tables?.waste_efficiency?.data || []}
+              columns={data?.tables?.waste_efficiency?.columns}
+              title="Waste Efficiency Analysis"
+            />
+          </Section>
+
+          {/* Team Section */}
+          <Section
+            id="team"
+            title="Team Performance"
+            ref={(el) => {
+              if (el) sectionRefs.current.team = el
+            }}
+          >
+            <DataTablePreview
+              data={data?.tables?.employee_performance?.data || []}
+              columns={data?.tables?.employee_performance?.columns}
+              title="Employee Performance"
+            />
+          </Section>
+
+          {/* Menu Section */}
+          <Section
+            id="menu"
+            title="Menu Analysis"
+            ref={(el) => {
+              if (el) sectionRefs.current.menu = el
+            }}
+          >
+            <DataTablePreview
+              data={data?.tables?.menu_volatility?.data || []}
+              columns={data?.tables?.menu_volatility?.columns}
+              title="Menu Volatility"
+            />
+          </Section>
+        </main>
       </div>
     </div>
   )
