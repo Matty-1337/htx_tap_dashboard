@@ -1,24 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAdminAccessCode, getDevPasswordHint } from '@/lib/auth-codes'
 
-const ADMIN_ACCESS_CODE = process.env.ADMIN_ACCESS_CODE || ''
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
 
 export async function POST(request: NextRequest) {
   try {
     const { code } = await request.json()
 
     if (!code) {
+      const errorResponse: { error: string; devHint?: string } = {
+        error: 'Access code is required',
+      }
+      const devHint = getDevPasswordHint()
+      if (devHint) {
+        errorResponse.devHint = devHint
+      }
+      return NextResponse.json(errorResponse, { status: 400 })
+    }
+
+    // Get expected code (with dev default or production error)
+    let expectedCode: string
+    let codeSource: 'env' | 'dev-default'
+    try {
+      const codeResult = getAdminAccessCode()
+      expectedCode = codeResult.code
+      codeSource = codeResult.source
+    } catch (error: any) {
+      // Production error - missing env var
       return NextResponse.json(
-        { error: 'Access code is required' },
-        { status: 400 }
+        { error: error.message || 'Configuration error' },
+        { status: 500 }
       )
     }
 
-    // Validate against server-side env var (never log the code)
-    if (!ADMIN_ACCESS_CODE || code !== ADMIN_ACCESS_CODE) {
-      return NextResponse.json(
-        { error: 'Invalid access code' },
-        { status: 401 }
-      )
+    // Dev-only logging (never log actual codes)
+    if (!isProduction) {
+      console.log('[ADMIN LOGIN API] Admin login attempt')
+      console.log(`[ADMIN LOGIN API] Code source: ${codeSource}`)
+    }
+    
+    if (code !== expectedCode) {
+      const errorResponse: { error: string; devHint?: string } = {
+        error: 'Invalid access code',
+      }
+      const devHint = getDevPasswordHint()
+      if (devHint) {
+        errorResponse.devHint = devHint
+      }
+      return NextResponse.json(errorResponse, { status: 401 })
     }
 
     // Set httpOnly admin session cookie

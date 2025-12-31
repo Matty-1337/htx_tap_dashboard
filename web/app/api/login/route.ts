@@ -1,30 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SignJWT } from 'jose'
+import { getClientLoginCode, getDevPasswordHint } from '@/lib/auth-codes'
 
 const COOKIE_SECRET = process.env.COOKIE_SECRET || 'default-secret-change-in-production'
-const LOGIN_CODES: Record<string, string> = {
-  melrose: process.env.LOGIN_CODE_MELROSE || '',
-  bestregard: process.env.LOGIN_CODE_BESTREGARD || '',
-  fancy: process.env.LOGIN_CODE_FANCY || '',
-}
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
 
 export async function POST(request: NextRequest) {
   try {
     const { clientId, code } = await request.json()
 
     if (!clientId || !code) {
+      const errorResponse: { error: string; devHint?: string } = {
+        error: 'clientId and code are required',
+      }
+      const devHint = getDevPasswordHint()
+      if (devHint) {
+        errorResponse.devHint = devHint
+      }
+      return NextResponse.json(errorResponse, { status: 400 })
+    }
+
+    // Get expected code (with dev default or production error)
+    let expectedCode: string
+    let codeSource: 'env' | 'dev-default'
+    try {
+      const codeResult = getClientLoginCode(clientId)
+      expectedCode = codeResult.code
+      codeSource = codeResult.source
+    } catch (error: any) {
+      // Production error - missing env var
       return NextResponse.json(
-        { error: 'clientId and code are required' },
-        { status: 400 }
+        { error: error.message || 'Configuration error' },
+        { status: 500 }
       )
     }
 
-    const expectedCode = LOGIN_CODES[clientId.toLowerCase()]
-    if (!expectedCode || code !== expectedCode) {
-      return NextResponse.json(
-        { error: 'Invalid access code' },
-        { status: 401 }
-      )
+    // Dev-only logging (never log actual codes)
+    if (!isProduction) {
+      console.log(`[LOGIN API] Login attempt for client: ${clientId}`)
+      console.log(`[LOGIN API] Code source: ${codeSource}`)
+    }
+    
+    if (code !== expectedCode) {
+      const errorResponse: { error: string; devHint?: string } = {
+        error: 'Invalid access code',
+      }
+      const devHint = getDevPasswordHint()
+      if (devHint) {
+        errorResponse.devHint = devHint
+      }
+      return NextResponse.json(errorResponse, { status: 401 })
     }
 
     // Create signed JWT token

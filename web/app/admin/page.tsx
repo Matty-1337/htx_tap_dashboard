@@ -62,7 +62,11 @@ export default function AdminPage() {
         await checkAdminSession()
       } else {
         const data = await response.json()
-        setError(data.error || 'Invalid access code')
+        let errorMessage = data.error || 'Invalid access code'
+        if (data.devHint) {
+          errorMessage += ` (${data.devHint})`
+        }
+        setError(errorMessage)
       }
     } catch (err) {
       setError('Login failed. Please try again.')
@@ -104,9 +108,9 @@ export default function AdminPage() {
   // Show loading state while checking auth
   if (checkingAuth) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-primary)' }}>
         <div className="text-center">
-          <p className="text-gray-600">Loading...</p>
+          <p style={{ color: 'var(--text-secondary)' }}>Loading...</p>
         </div>
       </div>
     )
@@ -115,19 +119,19 @@ export default function AdminPage() {
   // Show login form if not authenticated
   if (!authenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-primary)' }}>
+        <div className="max-w-md w-full space-y-8 p-8 rounded-lg shadow-md" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--card-border)' }}>
           <div>
-            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            <h2 className="mt-6 text-center text-3xl font-extrabold" style={{ color: 'var(--text-primary)' }}>
               HTX TAP Analytics – Admin
             </h2>
-            <p className="mt-2 text-center text-sm text-gray-600">
+            <p className="mt-2 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
               Enter admin access code to continue
             </p>
           </div>
           <form className="mt-8 space-y-6" onSubmit={handleLogin}>
             <div>
-              <label htmlFor="code" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="code" className="block text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                 Admin Access Code
               </label>
               <input
@@ -135,19 +139,45 @@ export default function AdminPage() {
                 type="password"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="mt-1 block w-full px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2"
+                style={{
+                  backgroundColor: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--card-border)',
+                  borderRadius: 'var(--radius-md)',
+                  caretColor: 'var(--text-primary)',
+                }}
                 placeholder="Enter admin access code"
                 required
                 autoFocus
               />
+              <style>{`
+                #code::placeholder {
+                  color: var(--text-muted);
+                }
+                #code:focus {
+                  border-color: var(--accent-primary) !important;
+                  --tw-ring-color: var(--accent-primary);
+                }
+              `}</style>
             </div>
             {error && (
-              <div className="text-red-600 text-sm">{error}</div>
+              <div className="text-sm" style={{ color: 'var(--status-danger)' }}>{error}</div>
             )}
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--accent-primary)',
+                borderRadius: 'var(--radius-md)',
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) e.currentTarget.style.opacity = '0.9'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = loading ? '0.5' : '1'
+              }}
             >
               {loading ? 'Logging in...' : 'Login'}
             </button>
@@ -159,20 +189,20 @@ export default function AdminPage() {
 
   // Show admin dashboard with client switcher
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <div className="max-w-md w-full space-y-8 p-8 rounded-lg shadow-md" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--card-border)' }}>
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          <h2 className="mt-6 text-center text-3xl font-extrabold" style={{ color: 'var(--text-primary)' }}>
             HTX TAP Analytics – Admin
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
             View client dashboards
           </p>
         </div>
 
         <div className="mt-8 space-y-6">
           <div>
-            <label htmlFor="client-select" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="client-select" className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
               Select Client to View
             </label>
             <select
@@ -180,11 +210,17 @@ export default function AdminPage() {
               value={viewClient || ''}
               onChange={(e) => handleViewClientChange(e.target.value as ValidClient)}
               disabled={loading}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 disabled:opacity-50"
+              className="block w-full px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 disabled:opacity-50"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--card-border)',
+                borderRadius: 'var(--radius-md)',
+              }}
             >
               <option value="">-- Select a client --</option>
               {VALID_CLIENTS.map((client) => (
-                <option key={client} value={client}>
+                <option key={client} value={client} style={{ backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}>
                   {CLIENT_NAMES[client]}
                 </option>
               ))}
@@ -192,21 +228,31 @@ export default function AdminPage() {
           </div>
 
           {viewClient && (
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-              <p className="text-sm text-blue-800">
+            <div className="rounded-md p-3" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+              <p className="text-sm" style={{ color: 'var(--status-info)' }}>
                 <strong>Current viewing:</strong> {CLIENT_NAMES[viewClient]}
               </p>
             </div>
           )}
 
           {error && (
-            <div className="text-red-600 text-sm">{error}</div>
+            <div className="text-sm" style={{ color: 'var(--status-danger)' }}>{error}</div>
           )}
 
           <button
             onClick={handleOpenDashboard}
             disabled={!viewClient || loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              backgroundColor: 'var(--accent-primary)',
+              borderRadius: 'var(--radius-md)',
+            }}
+            onMouseEnter={(e) => {
+              if (!loading && viewClient) e.currentTarget.style.opacity = '0.9'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = (!viewClient || loading) ? '0.5' : '1'
+            }}
           >
             {loading ? 'Loading...' : 'Open Dashboard'}
           </button>

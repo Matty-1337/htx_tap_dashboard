@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 
 const VALID_CLIENTS = ['melrose', 'bestregard', 'fancy'] as const
@@ -12,38 +12,64 @@ const CLIENT_NAMES: Record<ValidClient, string> = {
   fancy: 'Fancy',
 }
 
+/**
+ * Normalize client param from Next.js route params
+ * Handles: string | string[] | undefined
+ * Sanity checks: "melrose", "Melrose", "melrose%20" all normalize to "melrose"
+ */
+function normalizeClientParam(param: string | string[] | undefined): string | null {
+  if (!param) return null
+  
+  // Handle array case (shouldn't happen but be safe)
+  const paramStr = Array.isArray(param) ? param[0] : param
+  
+  // Decode URL encoding and normalize
+  try {
+    const decoded = decodeURIComponent(paramStr)
+    const trimmed = decoded.trim()
+    const normalized = trimmed.toLowerCase()
+    return normalized
+  } catch {
+    // If decode fails, just use as-is with toLowerCase
+    return paramStr.trim().toLowerCase()
+  }
+}
+
 export default function ClientLoginPage() {
   const params = useParams()
   const router = useRouter()
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [isValid, setIsValid] = useState(false)
 
-  // Get client from params and validate
-  const clientParam = params?.client as string
-  const clientId = clientParam?.toLowerCase() as ValidClient
-
-  // Validate client on mount
-  useEffect(() => {
-    if (!clientId || !VALID_CLIENTS.includes(clientId)) {
-      // Redirect to 404 or login page
-      router.push('/login')
-    } else {
-      setIsValid(true)
-    }
-  }, [clientId, router])
+  // Normalize client param robustly
+  const normalizedClient = normalizeClientParam(params?.client)
+  
+  // Validate client (synchronous check)
+  const clientId: ValidClient | null = normalizedClient && VALID_CLIENTS.includes(normalizedClient as ValidClient)
+    ? (normalizedClient as ValidClient)
+    : null
 
   // Don't render if invalid
-  if (!isValid || !clientId || !VALID_CLIENTS.includes(clientId)) {
+  if (!clientId || !VALID_CLIENTS.includes(clientId)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-primary)' }}>
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">404 - Client Not Found</h1>
-          <p className="text-gray-600 mb-4">Invalid client route. Valid clients: melrose, bestregard, fancy</p>
+          <h1 className="text-2xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>404 - Client Not Found</h1>
+          <p className="mb-4" style={{ color: 'var(--text-secondary)' }}>Invalid client route. Valid clients: melrose, bestregard, fancy</p>
           <button
             onClick={() => router.push('/login')}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+            className="px-4 py-2 text-white rounded-md focus:outline-none focus:ring-2"
+            style={{
+              backgroundColor: 'var(--accent-primary)',
+              borderRadius: 'var(--radius-md)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.opacity = '0.9'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = '1'
+            }}
           >
             Return to Login
           </button>
@@ -70,7 +96,11 @@ export default function ClientLoginPage() {
         router.push('/dashboard')
       } else {
         const data = await response.json()
-        setError(data.error || 'Invalid access code')
+        let errorMessage = data.error || 'Invalid access code'
+        if (data.devHint) {
+          errorMessage += ` (${data.devHint})`
+        }
+        setError(errorMessage)
       }
     } catch (err) {
       setError('Login failed. Please try again.')
@@ -80,13 +110,13 @@ export default function ClientLoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow-md">
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <div className="max-w-md w-full space-y-8 p-8 rounded-lg shadow-md" style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--card-border)' }}>
         <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          <h2 className="mt-6 text-center text-3xl font-extrabold" style={{ color: 'var(--text-primary)' }}>
             HTX TAP Analytics – {clientName}
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
+          <p className="mt-2 text-center text-sm" style={{ color: 'var(--text-secondary)' }}>
             Enter your access code to continue
           </p>
         </div>
@@ -95,7 +125,7 @@ export default function ClientLoginPage() {
           <input type="hidden" name="clientId" value={clientId} />
           
           <div>
-            <label htmlFor="code" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="code" className="block text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
               Access Code
             </label>
             <input
@@ -103,19 +133,45 @@ export default function ClientLoginPage() {
               type="password"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              className="mt-1 block w-full px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2"
+              style={{
+                backgroundColor: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                border: '1px solid var(--card-border)',
+                borderRadius: 'var(--radius-md)',
+                caretColor: 'var(--text-primary)',
+              }}
               placeholder="Enter access code"
               required
               autoFocus
             />
+            <style>{`
+              #code::placeholder {
+                color: var(--text-muted);
+              }
+              #code:focus {
+                border-color: var(--accent-primary) !important;
+                --tw-ring-color: var(--accent-primary);
+              }
+            `}</style>
           </div>
           {error && (
-            <div className="text-red-600 text-sm">{error}</div>
+            <div className="text-sm" style={{ color: 'var(--status-danger)' }}>{error}</div>
           )}
           <button
             type="submit"
             disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50"
+            style={{
+              backgroundColor: 'var(--accent-primary)',
+              borderRadius: 'var(--radius-md)',
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) e.currentTarget.style.opacity = '0.9'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.opacity = loading ? '0.5' : '1'
+            }}
           >
             {loading ? 'Logging in...' : 'Login'}
           </button>

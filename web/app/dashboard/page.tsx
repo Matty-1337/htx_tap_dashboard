@@ -99,12 +99,12 @@ export default function DashboardPage() {
         // Build error message with dev-only details
         let errorMessage = errorData.error || errorData.details || errorData.message || `HTTP ${response.status}`
         
-        // In dev mode, append backend URL and tip if available
-        if (process.env.NODE_ENV !== 'production' && errorData.backendUrl) {
+        // Append backend URL and tip if available (API only includes these in dev mode)
+        if (errorData.backendUrl) {
           errorMessage += `\n\nBackend URL: ${errorData.backendUrl}`
-          if (errorData.tip) {
-            errorMessage += `\n${errorData.tip}`
-          }
+        }
+        if (errorData.tip) {
+          errorMessage += `\n${errorData.tip}`
         }
         
         throw new Error(errorMessage)
