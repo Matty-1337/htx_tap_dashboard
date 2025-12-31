@@ -3,10 +3,13 @@ FastAPI Backend for HTX TAP Analytics
 Deployed on Railway
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ValidationError
 from typing import Optional, Dict, Any
+import logging
 from supabase import create_client
 import os
 import json
@@ -17,6 +20,42 @@ import numpy as np
 from htx_tap_analytics import run_full_analysis
 
 app = FastAPI(title="HTX TAP Analytics API", version="1.0.0")
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Global exception handler for RequestValidationError (Pydantic validation)
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Handle Pydantic validation errors with detailed JSON response"""
+    errors = exc.errors()
+    logger.error(f"Validation error: {errors}")
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "error": "ValidationError",
+            "details": errors,
+            "message": "Request validation failed"
+        }
+    )
+
+# Global exception handler for all unhandled exceptions
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle all unhandled exceptions with JSON response"""
+    import traceback
+    error_trace = traceback.format_exc()
+    logger.error(f"Unhandled exception: {exc.__class__.__name__}: {str(exc)}")
+    logger.error(f"Traceback: {error_trace}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={
+            "error": "InternalServerError",
+            "details": f"{exc.__class__.__name__}: {str(exc)}",
+            "message": "An unexpected error occurred"
+        }
+    )
 
 # CORS Configuration
 # Allow localhost and all Vercel deployments
@@ -170,6 +209,7 @@ async def run_analysis(request: RunRequest):
     start_time = time.time()
     
     try:
+        logger.info(f"Received /run request: clientId={request.clientId}, params keys={list(request.params.keys()) if request.params else []}")
         # Validate clientId
         folder = get_client_folder(request.clientId)
         
@@ -177,9 +217,14 @@ async def run_analysis(request: RunRequest):
         try:
             supabase = get_supabase_client()
         except ValueError as e:
+            logger.error(f"Supabase configuration error: {str(e)}")
             raise HTTPException(
-                status_code=500,
-                detail=f"{str(e)}. Hint: Check that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are set"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "error": "ConfigurationError",
+                    "details": str(e),
+                    "message": f"{str(e)}. Hint: Check that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are set"
+                }
             )
         
         bucket = os.getenv("SUPABASE_BUCKET", "client-data")
@@ -201,20 +246,30 @@ async def run_analysis(request: RunRequest):
             import traceback
             error_trace = traceback.format_exc()
             error_msg = str(e)
+            error_type = e.__class__.__name__
             # Log full error for debugging
-            print(f"ERROR in run_full_analysis: {error_msg}")
-            print(f"TRACEBACK: {error_trace}")
-            # Return error as string to ensure it's serializable
+            logger.error(f"ERROR in run_full_analysis: {error_type}: {error_msg}")
+            logger.error(f"TRACEBACK: {error_trace}")
+            # Return structured error
             raise HTTPException(
-                status_code=500,
-                detail=f"Analysis execution failed: {error_msg}. Hint: Check that CSV files exist in Supabase Storage folder and data format is correct. Traceback: {error_trace[-500:]}"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "error": "RunFailed",
+                    "details": f"{error_type}: {error_msg}",
+                    "message": f"Analysis execution failed: {error_msg}. Hint: Check that CSV files exist in Supabase Storage folder and data format is correct."
+                }
             )
         
         # Check for errors
         if isinstance(results, dict) and "error" in results:
+            logger.error(f"Analysis returned error: {results['error']}")
             raise HTTPException(
-                status_code=400,
-                detail=f"{results['error']}. Hint: Verify that sales data CSV files exist in the client folder"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "AnalysisError",
+                    "details": results['error'],
+                    "message": f"{results['error']}. Hint: Verify that sales data CSV files exist in the client folder"
+                }
             )
         
         # Serialize results
@@ -254,7 +309,7 @@ async def run_analysis(request: RunRequest):
         if "menu_volatility" in serialized and "data" in serialized["menu_volatility"]:
             tables["menu_volatility"] = serialized["menu_volatility"]
         
-        return {
+        response_data = {
             "clientId": request.clientId,
             "folder": folder,
             "generatedAt": datetime.utcnow().isoformat(),
@@ -263,21 +318,36 @@ async def run_analysis(request: RunRequest):
             "tables": tables,
             "executionTimeSeconds": round(execution_time, 2)
         }
+        logger.info(f"Analysis completed successfully for {request.clientId} in {execution_time:.2f}s")
+        return response_data
         
     except HTTPException:
+        # Re-raise HTTPException as-is (already has proper detail)
         raise
     except ValueError as e:
+        logger.error(f"ValueError in /run: {str(e)}")
         raise HTTPException(
-            status_code=400,
-            detail=f"{str(e)}. Hint: clientId must be one of: melrose, bestregard, fancy"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "InvalidRequest",
+                "details": str(e),
+                "message": f"{str(e)}. Hint: clientId must be one of: melrose, bestregard, fancy"
+            }
         )
     except Exception as e:
         import traceback
         error_trace = traceback.format_exc()
         error_msg = str(e)
+        error_type = e.__class__.__name__
+        logger.error(f"Unexpected error in /run: {error_type}: {error_msg}")
+        logger.error(f"Traceback: {error_trace}")
         raise HTTPException(
-            status_code=500,
-            detail=f"Unexpected error: {error_msg}. Hint: Check Railway logs for detailed error information. Traceback: {error_trace[-300:]}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "RunFailed",
+                "details": f"{error_type}: {error_msg}",
+                "message": "Analysis execution failed. Check Railway logs for details."
+            }
         )
 
 if __name__ == "__main__":
