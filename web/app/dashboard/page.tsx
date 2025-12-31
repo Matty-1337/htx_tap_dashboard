@@ -213,23 +213,46 @@ export default function DashboardPage() {
       <div data-client-theme="default" className="min-h-screen flex items-center justify-center bg-[var(--bg)] text-[var(--text)]">
         <GlassCard className="max-w-md">
           <div className="p-8 text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(var(--primary-rgb, 99, 102, 241), 0.1)' }}>
+              <svg className="w-8 h-8" style={{ color: 'var(--primary)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h2 className="text-2xl font-semibold text-gray-900 mb-2">Error Loading Dashboard</h2>
-            <p className="text-gray-600 mb-6">{error}</p>
+            <h2 className="text-2xl font-semibold mb-2" style={{ color: 'var(--text)' }}>Error Loading Dashboard</h2>
+            <p className="mb-6" style={{ color: 'var(--muted)' }}>{error}</p>
             <div className="flex gap-3 justify-center">
               <button
                 onClick={() => router.push('/login')}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                className="px-4 py-2 transition-colors"
+                style={{
+                  backgroundColor: 'var(--surface)',
+                  color: 'var(--text)',
+                  borderRadius: 'var(--radius)',
+                  border: '1px solid var(--card-border)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(var(--muted-rgb, 107, 114, 128), 0.1)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--surface)'
+                }}
               >
                 Back to Login
               </button>
               <button
                 onClick={fetchAnalysis}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+                className="px-4 py-2 text-white transition-colors"
+                style={{
+                  backgroundColor: 'var(--primary)',
+                  borderRadius: 'var(--radius)',
+                  boxShadow: 'var(--shadow)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.boxShadow = 'var(--glow)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.boxShadow = 'var(--shadow)'
+                }}
               >
                 Retry
               </button>
