@@ -80,6 +80,7 @@ type Filters = {
 }
 
 export default function DashboardPage() {
+  // ALL HOOKS MUST BE DECLARED AT THE TOP - BEFORE ANY EARLY RETURNS
   const [data, setData] = useState<AnalysisData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -88,6 +89,9 @@ export default function DashboardPage() {
   const [filters, setFilters] = useState<Filters>({ datePreset: '30d' }) // Default to 30 days
   const [tourDropdownOpen, setTourDropdownOpen] = useState(false)
   const [teamSortBy, setTeamSortBy] = useState<'Revenue' | 'Transactions' | 'Void_Rate_Pct'>('Revenue')
+  const [actionItems, setActionItems] = useState<ActionItem[]>([])
+  const [actionsLoading, setActionsLoading] = useState(true)
+  const [roleNames, setRoleNames] = useState<{ gmName?: string; manager1Name?: string; manager2Name?: string }>({})
   const router = useRouter()
   const sectionRefs = useRef<Record<string, HTMLElement>>({})
   const tourDropdownRef = useRef<HTMLDivElement>(null)
@@ -176,6 +180,7 @@ export default function DashboardPage() {
     setIsRunning(false)
   }
 
+  // Fetch analysis data on mount
   useEffect(() => {
     fetchAnalysis()
   }, [])
@@ -218,6 +223,68 @@ export default function DashboardPage() {
       }
     }
   }, [tourDropdownOpen])
+
+  // Fetch role names on mount
+  useEffect(() => {
+    const fetchRoleNames = async () => {
+      try {
+        const response = await fetch('/api/roles')
+        if (response.ok) {
+          const result = await response.json()
+          setRoleNames({
+            gmName: result.gmName || undefined,
+            manager1Name: result.manager1Name || undefined,
+            manager2Name: result.manager2Name || undefined,
+          })
+        }
+      } catch (err) {
+        console.error('Failed to fetch role names:', err)
+      }
+    }
+
+    fetchRoleNames()
+  }, [])
+
+  // Fetch actions on mount
+  useEffect(() => {
+    const fetchActions = async () => {
+      try {
+        const response = await fetch('/api/actions')
+        if (response.ok) {
+          const result = await response.json()
+          setActionItems(result.actions || [])
+        }
+      } catch (err) {
+        console.error('Failed to fetch actions:', err)
+      } finally {
+        setActionsLoading(false)
+      }
+    }
+
+    fetchActions()
+  }, [])
+
+  // Generate and persist actions when "Run Analysis" completes
+  useEffect(() => {
+    if (data && !loading && !actionsLoading) {
+      const generateAndPersist = async () => {
+        try {
+          const response = await fetch('/api/actions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload: data, filters }),
+          })
+          if (response.ok) {
+            const result = await response.json()
+            setActionItems(result.actions || [])
+          }
+        } catch (err) {
+          console.error('Failed to generate/persist actions:', err)
+        }
+      }
+      generateAndPersist()
+    }
+  }, [data, loading, filters, actionsLoading])
 
   // Get clientKey helper
   const getClientKey = (): ClientKey => {
@@ -456,73 +523,7 @@ export default function DashboardPage() {
     return null
   }
 
-  // Load persisted action items from Supabase
-  const [actionItems, setActionItems] = useState<ActionItem[]>([])
-  const [actionsLoading, setActionsLoading] = useState(true)
-  const [roleNames, setRoleNames] = useState<{ gmName?: string; manager1Name?: string; manager2Name?: string }>({})
-
-  // Fetch role names on mount
-  useEffect(() => {
-    const fetchRoleNames = async () => {
-      try {
-        const response = await fetch('/api/roles')
-        if (response.ok) {
-          const result = await response.json()
-          setRoleNames({
-            gmName: result.gmName || undefined,
-            manager1Name: result.manager1Name || undefined,
-            manager2Name: result.manager2Name || undefined,
-          })
-        }
-      } catch (err) {
-        console.error('Failed to fetch role names:', err)
-      }
-    }
-
-    fetchRoleNames()
-  }, [])
-
-  // Fetch actions on mount
-  useEffect(() => {
-    const fetchActions = async () => {
-      try {
-        const response = await fetch('/api/actions')
-        if (response.ok) {
-          const result = await response.json()
-          setActionItems(result.actions || [])
-        }
-      } catch (err) {
-        console.error('Failed to fetch actions:', err)
-      } finally {
-        setActionsLoading(false)
-      }
-    }
-
-    fetchActions()
-  }, [])
-
-  // Generate and persist actions when "Run Analysis" completes
-  useEffect(() => {
-    if (data && !loading && !actionsLoading) {
-      const generateAndPersist = async () => {
-        try {
-          const response = await fetch('/api/actions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ payload: data, filters }),
-          })
-          if (response.ok) {
-            const result = await response.json()
-            setActionItems(result.actions || [])
-          }
-        } catch (err) {
-          console.error('Failed to generate/persist actions:', err)
-        }
-      }
-      generateAndPersist()
-    }
-  }, [data, loading, filters, actionsLoading])
-
+  // All hooks are now declared above - safe to have early returns below
   const topActions = actionItems.filter((a) => a.priority === 'high').slice(0, 3)
 
   // Extract KPIs
