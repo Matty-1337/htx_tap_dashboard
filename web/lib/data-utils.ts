@@ -271,15 +271,18 @@ export function getTeamLeaderboard(data: any[], limit: number = 10, sortBy: 'Rev
   if (!serverKey || !revenueKey) return []
   
   // Create enriched rows with all available metrics
-  const enriched = data.map(row => ({
-    Server: row[serverKey],
-    Revenue: typeof row[revenueKey] === 'number' ? row[revenueKey] : 0,
-    Transactions: transactionsKey && typeof row[transactionsKey] === 'number' ? row[transactionsKey] : 0,
-    Void_Rate_Pct: voidRateKey && typeof row[voidRateKey] === 'number' ? row[voidRateKey] : 0,
-    Void_Amount: findColumn([row], ['void_amount', 'void']) && typeof row[findColumn([row], ['void_amount', 'void'])] === 'number' 
-      ? row[findColumn([row], ['void_amount', 'void'])] 
-      : 0,
-  }))
+  const enriched = data.map(row => {
+    const voidAmountKey = findColumn([row], ['void_amount', 'void'])
+    const voidAmount = voidAmountKey && typeof row[voidAmountKey] === 'number' ? row[voidAmountKey] as number : 0
+    
+    return {
+      Server: row[serverKey],
+      Revenue: typeof row[revenueKey] === 'number' ? row[revenueKey] : 0,
+      Transactions: transactionsKey && typeof row[transactionsKey] === 'number' ? row[transactionsKey] : 0,
+      Void_Rate_Pct: voidRateKey && typeof row[voidRateKey] === 'number' ? row[voidRateKey] : 0,
+      Void_Amount: voidAmount,
+    }
+  })
   
   // Sort by selected column
   const sorted = [...enriched].sort((a, b) => {
@@ -459,14 +462,17 @@ export function getChaosItems(data: any[], limit: number = 15, minCount: number 
     return bVol - aVol
   })
   
-  return sorted.slice(0, limit).map(row => ({
-    Item: row[itemKey],
-    Volatility: typeof row[volatilityKey] === 'number' ? row[volatilityKey] : 0,
-    Count: countKey && typeof row[countKey] === 'number' ? row[countKey] : 0,
-    Revenue: findColumn([row], ['revenue', 'net_price', 'sales']) && typeof row[findColumn([row], ['revenue', 'net_price', 'sales'])] === 'number'
-      ? row[findColumn([row], ['revenue', 'net_price', 'sales'])]
-      : 0,
-  }))
+  return sorted.slice(0, limit).map(row => {
+    const revenueKeyForRow = findColumn([row], ['revenue', 'net_price', 'sales'])
+    const revenue = revenueKeyForRow && typeof row[revenueKeyForRow] === 'number' ? row[revenueKeyForRow] as number : 0
+    
+    return {
+      Item: row[itemKey],
+      Volatility: typeof row[volatilityKey] === 'number' ? row[volatilityKey] : 0,
+      Count: countKey && typeof row[countKey] === 'number' ? row[countKey] : 0,
+      Revenue: revenue,
+    }
+  })
 }
 
 // Classify menu items into Stars/Monitor/Investigate/Remove buckets
@@ -490,13 +496,18 @@ export function classifyMenuItems(data: any[]): {
   }
   
   // Extract numeric values
-  const items = data.map(row => ({
-    Item: row[itemKey],
-    Revenue: typeof row[revenueKey] === 'number' ? row[revenueKey] : 0,
-    Count: typeof row[countKey] === 'number' ? row[countKey] : 0,
-    Volatility: volatilityKey && typeof row[volatilityKey] === 'number' ? row[volatilityKey] : 0,
-    Category: findColumn([row], ['category', 'item_category']) ? row[findColumn([row], ['category', 'item_category'])] : null,
-  }))
+  const items = data.map(row => {
+    const categoryKeyForRow = findColumn([row], ['category', 'item_category'])
+    const category = categoryKeyForRow ? row[categoryKeyForRow] : null
+    
+    return {
+      Item: row[itemKey],
+      Revenue: typeof row[revenueKey] === 'number' ? row[revenueKey] : 0,
+      Count: typeof row[countKey] === 'number' ? row[countKey] : 0,
+      Volatility: volatilityKey && typeof row[volatilityKey] === 'number' ? row[volatilityKey] : 0,
+      Category: category,
+    }
+  })
   
   // Calculate percentiles
   const revenues = items.map(i => i.Revenue).filter(v => v > 0).sort((a, b) => a - b)

@@ -57,8 +57,7 @@ function startNextTourInQueue() {
   driverInstance = driver({
     showProgress: true,
     allowClose: true,
-    overlayClickNext: false,
-    keyboardControl: true, // ESC closes
+    allowKeyboardControl: true, // ESC closes
     animate: true,
     smoothScroll: true,
     steps: driverSteps,
@@ -103,8 +102,7 @@ export function startTour({ clientKey, section }: { clientKey: ClientKey; sectio
   driverInstance = driver({
     showProgress: true,
     allowClose: true,
-    overlayClickNext: false,
-    keyboardControl: true, // ESC closes
+    allowKeyboardControl: true, // ESC closes
     animate: true,
     smoothScroll: true,
     steps: driverSteps,
