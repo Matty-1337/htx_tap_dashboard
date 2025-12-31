@@ -687,7 +687,8 @@ export default function DashboardPage() {
 
         {/* Right Action Rail */}
         <ActionRail 
-          actions={actionItems} 
+          actions={actionItems}
+          roleNames={roleNames}
           onActionUpdate={async () => {
             // Refresh actions from server
             try {
