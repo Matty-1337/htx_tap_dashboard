@@ -17,6 +17,7 @@ import time
 from datetime import datetime
 import pandas as pd
 import numpy as np
+import uuid
 from htx_tap_analytics import run_full_analysis
 
 app = FastAPI(title="HTX TAP Analytics API", version="1.0.0")
@@ -260,10 +261,28 @@ async def test_supabase():
 @app.post("/run")
 async def run_analysis(request: RunRequest):
     """Run full analysis for a client"""
+    # Generate unique request ID for correlation
+    request_id = str(uuid.uuid4())
     start_time = time.time()
     
+    # FIRST-LINE logging with unique marker
+    params_keys = list(request.params.keys()) if request.params else []
+    logger.info(f"RUN_START request_id={request_id} clientId={request.clientId} params_keys={params_keys}")
+    
+    # Force error switch to test JSON response bodies
+    if request.params.get("__force_error") is True:
+        logger.info(f"RUN_START force_error triggered request_id={request_id}")
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "error": "ForcedError",
+                "request_id": request_id,
+                "clientId": request.clientId,
+                "note": "force error triggered"
+            }
+        )
+    
     try:
-        logger.info(f"Received /run request: clientId={request.clientId}, params keys={list(request.params.keys()) if request.params else []}")
         # Validate clientId
         folder = get_client_folder(request.clientId)
         
