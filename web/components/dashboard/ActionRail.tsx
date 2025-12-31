@@ -9,9 +9,14 @@ import clsx from 'clsx'
 interface ActionRailProps {
   actions: ActionItem[]
   onActionUpdate?: () => void
+  roleNames?: {
+    gmName?: string
+    manager1Name?: string
+    manager2Name?: string
+  }
 }
 
-export function ActionRail({ actions, onActionUpdate }: ActionRailProps) {
+export function ActionRail({ actions, onActionUpdate, roleNames }: ActionRailProps) {
   const [activeTab, setActiveTab] = useState<'open' | 'completed'>('open')
   const [completedIds, setCompletedIds] = useState<Set<string>>(new Set())
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(new Set())
@@ -331,6 +336,18 @@ export function ActionRail({ actions, onActionUpdate }: ActionRailProps) {
                         <option value="Manager 1">Manager 1</option>
                         <option value="Manager 2">Manager 2</option>
                       </select>
+                      {/* Show role names as sublabels */}
+                      <div className="text-xs muted mt-1">
+                        {assignee === 'GM' && roleNames?.gmName && (
+                          <span>GM — {roleNames.gmName}</span>
+                        )}
+                        {assignee === 'Manager 1' && roleNames?.manager1Name && (
+                          <span>Manager 1 — {roleNames.manager1Name}</span>
+                        )}
+                        {assignee === 'Manager 2' && roleNames?.manager2Name && (
+                          <span>Manager 2 — {roleNames.manager2Name}</span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Impact */}

@@ -26,6 +26,12 @@ interface Filters {
   selectedCategory?: string
 }
 
+interface RoleNames {
+  gmName?: string
+  manager1Name?: string
+  manager2Name?: string
+}
+
 interface AnalysisPayload {
   kpis?: Record<string, number>
   tables?: {
@@ -61,7 +67,17 @@ function getStringValue(row: any, key: string | null): string {
   return String(row[key])
 }
 
-export function generateActions(payload: AnalysisPayload, filters: Filters = {}): ActionItem[] {
+// Helper: Check if a name matches GM name (case-insensitive, trimmed)
+function isGMName(name: string | null | undefined, gmName?: string): boolean {
+  if (!name || !gmName) return false
+  return name.trim().toLowerCase() === gmName.trim().toLowerCase()
+}
+
+export function generateActions(
+  payload: AnalysisPayload,
+  filters: Filters = {},
+  roleNames?: RoleNames
+): ActionItem[] {
   const actions: ActionItem[] = []
   const actionId = () => `action-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
 
@@ -82,6 +98,9 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
       candidates = dataSource.filter((row) => getStringValue(row, serverKey) === filters.selectedServer)
     }
 
+    // Check if selectedServer filter matches GM name
+    const selectedServerIsGM = filters.selectedServer && isGMName(filters.selectedServer, roleNames?.gmName)
+
     // Find critical candidates
     const criticalCandidates = candidates.filter((row) => {
       const status = statusKey ? getStringValue(row, statusKey).toLowerCase() : ''
@@ -98,11 +117,48 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
     // Sort by total waste descending
     criticalCandidates.sort((a, b) => getNumericValue(b, totalWasteKey) - getNumericValue(a, totalWasteKey))
 
-    // Generate action for top candidates (up to 3)
-    criticalCandidates.slice(0, 3).forEach((row) => {
+    // Check if we should generate a leadership review action instead
+    const hasGMCandidate = criticalCandidates.some((row) => {
+      const serverValue = serverKey ? getStringValue(row, serverKey) : ''
+      return isGMName(serverValue, roleNames?.gmName)
+    })
+
+    if (hasGMCandidate || selectedServerIsGM) {
+      // Generate leadership review action instead of naming GM
+      const reportName = employeeData.length > 0 ? 'employee_performance' : 'waste_efficiency'
+      actions.push({
+        id: actionId(),
+        priority: 'high',
+        title: 'Leadership review: reduce waste drivers across the floor team',
+        rationale: 'Patterns suggest a coaching opportunity across shifts; this warrants a quick review of void/removal flow and portion consistency.',
+        steps: [
+          'Review top void + removed reasons for the week (10–15 min).',
+          'Shadow one peak shift to observe order flow.',
+          'Confirm recipe/portioning and comps policy reminders.',
+        ],
+        estimatedImpactUsd: undefined, // Don't estimate for leadership actions
+        assignee: 'GM',
+        source: {
+          report: reportName,
+          keys: {},
+          dedupe_key: 'waste:leadership_review',
+        },
+      })
+    }
+
+    // Generate actions for non-GM candidates (up to 3, excluding GM)
+    const nonGMCandidates = criticalCandidates.filter((row) => {
+      const serverValue = serverKey ? getStringValue(row, serverKey) : ''
+      return !isGMName(serverValue, roleNames?.gmName)
+    })
+
+    nonGMCandidates.slice(0, 3).forEach((row) => {
       const serverName = serverKey ? getStringValue(row, serverKey) : 'Team Member'
       const totalWaste = getNumericValue(row, totalWasteKey)
       const wasteRate = getNumericValue(row, wasteRateKey)
+      const reportName = employeeData.length > 0 ? 'employee_performance' : 'waste_efficiency'
+      const serverValue = serverKey ? getStringValue(row, serverKey) : ''
+      const dedupeKey = `waste:server=${serverValue}`
 
       actions.push({
         id: actionId(),
@@ -117,8 +173,9 @@ export function generateActions(payload: AnalysisPayload, filters: Filters = {})
         estimatedImpactUsd: totalWaste > 0 ? totalWaste * 0.3 : undefined,
         assignee: 'GM',
         source: {
-          report: employeeData.length > 0 ? 'employee_performance' : 'waste_efficiency',
-          keys: serverKey ? { [serverKey]: getStringValue(row, serverKey) } : {},
+          report: reportName,
+          keys: serverKey ? { [serverKey]: serverValue } : {},
+          dedupe_key: dedupeKey,
         },
       })
     })

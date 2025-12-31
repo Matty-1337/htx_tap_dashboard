@@ -86,8 +86,16 @@ export async function POST(request: NextRequest) {
     const payload = body.payload || {}
     const filters = body.filters || {}
 
-    // Generate actions
-    const generatedActions = generateActions(payload, filters)
+    // Get role names from environment variables
+    const clientUpper = clientId.toUpperCase()
+    const roleNames = {
+      gmName: process.env[`${clientUpper}_GM_NAME`] || undefined,
+      manager1Name: process.env[`${clientUpper}_MANAGER_1_NAME`] || undefined,
+      manager2Name: process.env[`${clientUpper}_MANAGER_2_NAME`] || undefined,
+    }
+
+    // Generate actions with role names to prevent GM name in content
+    const generatedActions = generateActions(payload, filters, roleNames)
 
     // Upsert each action with deduplication
     const upsertedActions: ActionItem[] = []

@@ -335,6 +335,28 @@ export default function DashboardPage() {
   // Load persisted action items from Supabase
   const [actionItems, setActionItems] = useState<ActionItem[]>([])
   const [actionsLoading, setActionsLoading] = useState(true)
+  const [roleNames, setRoleNames] = useState<{ gmName?: string; manager1Name?: string; manager2Name?: string }>({})
+
+  // Fetch role names on mount
+  useEffect(() => {
+    const fetchRoleNames = async () => {
+      try {
+        const response = await fetch('/api/roles')
+        if (response.ok) {
+          const result = await response.json()
+          setRoleNames({
+            gmName: result.gmName || undefined,
+            manager1Name: result.manager1Name || undefined,
+            manager2Name: result.manager2Name || undefined,
+          })
+        }
+      } catch (err) {
+        console.error('Failed to fetch role names:', err)
+      }
+    }
+
+    fetchRoleNames()
+  }, [])
 
   // Fetch actions on mount
   useEffect(() => {
