@@ -21,8 +21,16 @@ export function ActionRail({ actions }: ActionRailProps) {
   const openActions = actions.filter((a) => !completedIds.has(a.id))
   const completedActions = actions.filter((a) => completedIds.has(a.id))
 
+  // Filter by assignee if filter is active
+  const filteredOpenActions = assigneeFilter === 'All' 
+    ? openActions 
+    : openActions.filter(a => {
+        const assignee = assignees[a.id] ?? a.assignee ?? 'GM'
+        return assignee === assigneeFilter
+      })
+
   // Sort: pinned first, then by priority and impact
-  const sortedActions = [...openActions].sort((a, b) => {
+  const sortedActions = [...filteredOpenActions].sort((a, b) => {
     const aPinned = pinnedIds.has(a.id)
     const bPinned = pinnedIds.has(b.id)
     if (aPinned !== bPinned) return aPinned ? -1 : 1
@@ -74,6 +82,9 @@ export function ActionRail({ actions }: ActionRailProps) {
   }
 
   const copyActions = () => {
+    // Only include OPEN actions (not completed)
+    const openActionsForCopy = actions.filter((a) => !completedIds.has(a.id))
+    
     // Group actions by assignee
     const groupedByAssignee: Record<Assignee, ActionItem[]> = {
       'GM': [],
@@ -81,7 +92,7 @@ export function ActionRail({ actions }: ActionRailProps) {
       'Manager 2': [],
     }
 
-    displayActions.forEach((action) => {
+    openActionsForCopy.forEach((action) => {
       const assignee = assignees[action.id] ?? action.assignee ?? 'GM'
       groupedByAssignee[assignee].push(action)
     })
@@ -148,6 +159,25 @@ export function ActionRail({ actions }: ActionRailProps) {
             Action Items
           </h2>
           <p className="text-xs muted">Based on latest run</p>
+        </div>
+
+        {/* Assignee Filter */}
+        <div className="mb-4">
+          <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'rgba(var(--muted-rgb, 107, 114, 128), 0.1)' }}>
+            {(['All', 'GM', 'Manager 1', 'Manager 2'] as const).map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setAssigneeFilter(filter)}
+                className="flex-1 px-2 py-1 text-xs font-medium transition-colors rounded"
+                style={{
+                  backgroundColor: assigneeFilter === filter ? 'var(--primary)' : 'transparent',
+                  color: assigneeFilter === filter ? 'var(--text)' : 'var(--muted)',
+                }}
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Tabs */}
