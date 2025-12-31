@@ -9,7 +9,18 @@ import { SkeletonKpiCard, SkeletonTable } from '@/components/dashboard/SkeletonC
 import { Section } from '@/components/dashboard/Section'
 import { DataTablePreview } from '@/components/dashboard/DataTablePreview'
 import { PillBadge } from '@/components/dashboard/PillBadge'
+import { ActiveFilters } from '@/components/dashboard/ActiveFilters'
+import { TrendLineChart } from '@/components/dashboard/charts/TrendLineChart'
+import { BreakdownBarChart } from '@/components/dashboard/charts/BreakdownBarChart'
+import { DonutStatusChart } from '@/components/dashboard/charts/DonutStatusChart'
 import { formatKey } from '@/lib/ui'
+import {
+  getStatusBreakdown,
+  getTopWasteServers,
+  filterData,
+  calculateKpiFromData,
+  findColumn,
+} from '@/lib/data-utils'
 import clsx from 'clsx'
 
 interface AnalysisData {
@@ -38,12 +49,19 @@ const NAV_SECTIONS = [
   { id: 'menu', label: 'Menu' },
 ]
 
+type Filters = {
+  selectedServer?: string
+  selectedStatus?: string
+  selectedCategory?: string
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<AnalysisData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [activeSection, setActiveSection] = useState('overview')
   const [isRunning, setIsRunning] = useState(false)
+  const [filters, setFilters] = useState<Filters>({})
   const router = useRouter()
   const sectionRefs = useRef<Record<string, HTMLElement>>({})
 
@@ -218,9 +236,80 @@ export default function DashboardPage() {
     )
   }
 
+  // Handle filter changes
+  const handleSetFilter = (key: keyof Filters, value: string | undefined) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value,
+    }))
+  }
+
+  const handleRemoveFilter = (key: keyof Filters) => {
+    setFilters(prev => {
+      const newFilters = { ...prev }
+      delete newFilters[key]
+      return newFilters
+    })
+  }
+
+  const handleClearFilters = () => {
+    setFilters({})
+  }
+
+  // Handle row click
+  const handleRowClick = (row: any) => {
+    const serverKey = findColumn([row], ['server', 'employee', 'name'])
+    const statusKey = findColumn([row], ['status'])
+    const categoryKey = findColumn([row], ['category', 'type'])
+
+    if (serverKey && row[serverKey]) {
+      handleSetFilter('selectedServer', row[serverKey] === filters.selectedServer ? undefined : row[serverKey])
+    }
+    if (statusKey && row[statusKey]) {
+      handleSetFilter('selectedStatus', row[statusKey] === filters.selectedStatus ? undefined : row[statusKey])
+    }
+    if (categoryKey && row[categoryKey]) {
+      handleSetFilter('selectedCategory', row[categoryKey] === filters.selectedCategory ? undefined : row[categoryKey])
+    }
+  }
+
+  // Derive chart data from tables
+  const employeeData = data?.tables?.employee_performance?.data || []
+  const wasteData = data?.tables?.waste_efficiency?.data || []
+  const menuData = data?.tables?.menu_volatility?.data || []
+
+  const statusBreakdown = getStatusBreakdown(employeeData)
+  const topWasteServers = getTopWasteServers(wasteData, 8)
+
+  // Filter tables based on active filters
+  const filteredWasteData = filterData(wasteData, filters)
+  const filteredEmployeeData = filterData(employeeData, filters)
+  const filteredMenuData = filterData(menuData, filters)
+
+  // Calculate filtered KPIs
+  const calculateFilteredKpi = (kpiKey: string): number | null => {
+    if (!filters.selectedServer && !filters.selectedStatus && !filters.selectedCategory) {
+      return null
+    }
+
+    // Try to calculate from filtered data
+    if (kpiKey.toLowerCase().includes('revenue')) {
+      return calculateKpiFromData(filteredWasteData, kpiKey) || calculateKpiFromData(filteredEmployeeData, kpiKey)
+    }
+    if (kpiKey.toLowerCase().includes('waste')) {
+      return calculateKpiFromData(filteredWasteData, kpiKey)
+    }
+    
+    return null
+  }
+
   // Extract KPIs
   const kpis = data?.kpis || {}
-  const kpiEntries = Object.entries(kpis).slice(0, 6)
+  const kpiEntries = Object.entries(kpis).slice(0, 6).map(([key, value]) => ({
+    key,
+    value,
+    filteredValue: calculateFilteredKpi(key),
+  }))
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
@@ -298,11 +387,68 @@ export default function DashboardPage() {
               if (el) sectionRefs.current.overview = el
             }}
           >
+            {/* Interactive Insights */}
+            {(statusBreakdown.length > 0 || topWasteServers.length > 0) && (
+              <div className="mb-8">
+                <h3 className="text-xl font-semibold text-gray-900 mb-4">Interactive Insights</h3>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                  {/* Left: Status Donut + Top Waste Bar (stacked) */}
+                  <div className="space-y-6">
+                    {statusBreakdown.length > 0 && (
+                      <DonutStatusChart
+                        data={statusBreakdown}
+                        nameKey="name"
+                        valueKey="value"
+                        title="Status Distribution"
+                        selectedStatus={filters.selectedStatus}
+                        onSliceClick={(status) => handleSetFilter('selectedStatus', status === filters.selectedStatus ? undefined : status)}
+                      />
+                    )}
+                    {topWasteServers.length > 0 && (
+                      <BreakdownBarChart
+                        data={topWasteServers}
+                        categoryKey="Server"
+                        valueKey="Waste"
+                        title="Top Waste Servers"
+                        selectedCategory={filters.selectedServer}
+                        onBarClick={(server) => handleSetFilter('selectedServer', server === filters.selectedServer ? undefined : server)}
+                      />
+                    )}
+                  </div>
+                  
+                  {/* Right: Trend chart (if available) */}
+                  {data?.charts?.hourly_revenue && data.charts.hourly_revenue.length > 0 && (
+                    <TrendLineChart
+                      data={data.charts.hourly_revenue}
+                      xKey="Hour"
+                      yKey="Net Price"
+                      title="Revenue by Hour"
+                    />
+                  )}
+                </div>
+
+                {/* Active Filters */}
+                <ActiveFilters
+                  filters={filters}
+                  onRemoveFilter={handleRemoveFilter}
+                  onClearAll={handleClearFilters}
+                />
+              </div>
+            )}
+
+            {/* KPI Cards */}
             <AnimatePresence>
               {kpiEntries.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {kpiEntries.map(([key, value], idx) => (
-                    <KpiCard key={key} label={key} value={value} delay={idx * 0.1} />
+                  {kpiEntries.map(({ key, value, filteredValue }, idx) => (
+                    <KpiCard
+                      key={key}
+                      label={key}
+                      value={value}
+                      filteredValue={filteredValue}
+                      delay={idx * 0.1}
+                    />
                   ))}
                 </div>
               ) : (
@@ -324,9 +470,10 @@ export default function DashboardPage() {
             }}
           >
             <DataTablePreview
-              data={data?.tables?.waste_efficiency?.data || []}
+              data={filteredWasteData}
               columns={data?.tables?.waste_efficiency?.columns}
               title="Waste Efficiency Analysis"
+              onRowClick={handleRowClick}
             />
           </Section>
 
@@ -339,9 +486,10 @@ export default function DashboardPage() {
             }}
           >
             <DataTablePreview
-              data={data?.tables?.employee_performance?.data || []}
+              data={filteredEmployeeData}
               columns={data?.tables?.employee_performance?.columns}
               title="Employee Performance"
+              onRowClick={handleRowClick}
             />
           </Section>
 
@@ -354,9 +502,10 @@ export default function DashboardPage() {
             }}
           >
             <DataTablePreview
-              data={data?.tables?.menu_volatility?.data || []}
+              data={filteredMenuData}
               columns={data?.tables?.menu_volatility?.columns}
               title="Menu Volatility"
+              onRowClick={handleRowClick}
             />
           </Section>
         </main>

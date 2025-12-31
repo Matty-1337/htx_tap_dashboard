@@ -12,6 +12,7 @@ interface DataTablePreviewProps {
   title?: string
   maxRows?: number
   expandable?: boolean
+  onRowClick?: (row: any) => void
 }
 
 export function DataTablePreview({
@@ -20,6 +21,7 @@ export function DataTablePreview({
   title,
   maxRows = 25,
   expandable = true,
+  onRowClick,
 }: DataTablePreviewProps) {
   const [expanded, setExpanded] = useState(false)
   const [expandedRows, setExpandedRows] = useState(maxRows)
@@ -86,9 +88,11 @@ export function DataTablePreview({
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.2, delay: idx * 0.01 }}
+                        onClick={() => onRowClick && onRowClick(row)}
                         className={clsx(
                           'hover:bg-gray-50 transition-colors',
-                          idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50',
+                          onRowClick && 'cursor-pointer'
                         )}
                       >
                         {displayColumns.map((col) => (
