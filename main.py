@@ -218,13 +218,14 @@ async def run_analysis(request: RunRequest):
             supabase = get_supabase_client()
         except ValueError as e:
             logger.error(f"Supabase configuration error: {str(e)}")
+            error_detail = {
+                "error": "ConfigurationError",
+                "details": str(e),
+                "message": f"{str(e)}. Hint: Check that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are set"
+            }
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={
-                    "error": "ConfigurationError",
-                    "details": str(e),
-                    "message": f"{str(e)}. Hint: Check that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are set"
-                }
+                detail=error_detail
             )
         
         bucket = os.getenv("SUPABASE_BUCKET", "client-data")
