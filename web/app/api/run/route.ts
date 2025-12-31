@@ -8,9 +8,9 @@ export async function POST(request: NextRequest) {
     // Read session cookie
     const session = request.cookies.get('session')
 
-    if (!session) {
+    if (!session || !session.value) {
       return NextResponse.json(
-        { error: 'Not authenticated' },
+        { error: 'Not authenticated', details: 'No session cookie found' },
         { status: 401 }
       )
     }
@@ -24,13 +24,15 @@ export async function POST(request: NextRequest) {
 
       if (!clientId) {
         return NextResponse.json(
-          { error: 'Invalid session: missing clientId' },
+          { error: 'Invalid session: missing clientId', details: 'JWT payload missing clientId' },
           { status: 401 }
         )
       }
-    } catch (error) {
+    } catch (error: any) {
+      // Log JWT verification error for debugging (server-side only)
+      console.error('JWT verification failed:', error.message || 'Unknown error')
       return NextResponse.json(
-        { error: 'Invalid session' },
+        { error: 'Invalid session', details: 'JWT verification failed' },
         { status: 401 }
       )
     }
