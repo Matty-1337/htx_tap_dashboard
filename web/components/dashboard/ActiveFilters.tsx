@@ -8,6 +8,7 @@ interface Filters {
   selectedServer?: string
   selectedStatus?: string
   selectedCategory?: string
+  datePreset?: '7d' | '30d' | '90d' | 'mtd'
 }
 
 interface ActiveFiltersProps {
@@ -17,7 +18,18 @@ interface ActiveFiltersProps {
 }
 
 export function ActiveFilters({ filters, onRemoveFilter, onClearAll }: ActiveFiltersProps) {
+  const getDatePresetLabel = (preset?: string): string => {
+    switch (preset) {
+      case '7d': return 'Last 7 days'
+      case '30d': return 'Last 30 days'
+      case '90d': return 'Last 90 days'
+      case 'mtd': return 'Month to date'
+      default: return ''
+    }
+  }
+
   const activeFilters = [
+    filters.datePreset && { key: 'datePreset' as const, label: 'Date Range', value: getDatePresetLabel(filters.datePreset) },
     filters.selectedServer && { key: 'selectedServer' as const, label: 'Server', value: filters.selectedServer },
     filters.selectedStatus && { key: 'selectedStatus' as const, label: 'Status', value: filters.selectedStatus },
     filters.selectedCategory && { key: 'selectedCategory' as const, label: 'Category', value: filters.selectedCategory },

@@ -5,34 +5,65 @@ const COOKIE_SECRET = process.env.COOKIE_SECRET || 'default-secret-change-in-pro
 
 export async function POST(request: NextRequest) {
   try {
-    // Read session cookie
-    const session = request.cookies.get('session')
-
-    if (!session || !session.value) {
-      return NextResponse.json(
-        { error: 'Not authenticated', details: 'No session cookie found' },
-        { status: 401 }
-      )
-    }
-
-    // Verify JWT and extract clientId
-    let clientId: string
+    // Read request body for params (including dateRange) - must be done before reading cookies
+    let requestBodyData: any = {}
     try {
-      const secret = new TextEncoder().encode(COOKIE_SECRET)
-      const { payload } = await jwtVerify(session.value, secret)
-      clientId = payload.clientId as string
+      const bodyText = await request.text()
+      if (bodyText) {
+        requestBodyData = JSON.parse(bodyText)
+      }
+    } catch {
+      // Body may be empty, that's fine
+    }
+    
+    // STEP 1: Check for admin view-as (highest priority)
+    const adminSession = request.cookies.get('admin_session')
+    const adminViewClient = request.cookies.get('admin_view_client')
+    
+    let clientId: string | null = null
+    let isAdminSession = false
 
-      if (!clientId) {
+    // If admin is authenticated and has selected a view client, use that
+    if (adminSession?.value === 'true' && adminViewClient?.value) {
+      clientId = adminViewClient.value.toLowerCase().trim()
+      isAdminSession = true
+    } else {
+      // STEP 2: Fallback to normal JWT session
+      const session = request.cookies.get('session')
+
+      if (!session || !session.value) {
         return NextResponse.json(
-          { error: 'Invalid session: missing clientId', details: 'JWT payload missing clientId' },
+          { error: 'Not authenticated', details: 'No session cookie found' },
           { status: 401 }
         )
       }
-    } catch (error: any) {
-      // Log JWT verification error for debugging (server-side only)
-      console.error('JWT verification failed:', error.message || 'Unknown error')
+
+      // Verify JWT and extract clientId
+      try {
+        const secret = new TextEncoder().encode(COOKIE_SECRET)
+        const { payload } = await jwtVerify(session.value, secret)
+        clientId = payload.clientId as string
+
+        if (!clientId) {
+          return NextResponse.json(
+            { error: 'Invalid session: missing clientId', details: 'JWT payload missing clientId' },
+            { status: 401 }
+          )
+        }
+      } catch (error: any) {
+        // Log JWT verification error for debugging (server-side only)
+        console.error('JWT verification failed:', error.message || 'Unknown error')
+        return NextResponse.json(
+          { error: 'Invalid session', details: 'JWT verification failed' },
+          { status: 401 }
+        )
+      }
+    }
+
+    // Ensure clientId is set (should never be null here, but TypeScript safety)
+    if (!clientId) {
       return NextResponse.json(
-        { error: 'Invalid session', details: 'JWT verification failed' },
+        { error: 'No clientId available', details: 'Neither admin view nor session clientId found' },
         { status: 401 }
       )
     }
@@ -49,6 +80,13 @@ export async function POST(request: NextRequest) {
     // Normalize clientId to lowercase (Railway expects: melrose, bestregard, fancy)
     const normalizedClientId = clientId.toLowerCase().trim()
 
+    // Server-side logging (no secrets)
+    if (isAdminSession) {
+      console.log(`[API /run] Admin session: viewing as clientId=${normalizedClientId}`)
+    } else {
+      console.log(`[API /run] Client session: clientId=${normalizedClientId}`)
+    }
+
     // Validate clientId matches expected values
     const validClientIds = ['melrose', 'bestregard', 'fancy']
     if (!validClientIds.includes(normalizedClientId)) {
@@ -63,10 +101,18 @@ export async function POST(request: NextRequest) {
     const timeoutId = setTimeout(() => controller.abort(), 120000) // 120s timeout
 
     try {
-      // Railway expects: { "clientId": "melrose", "params": {} }
+      // Extract params from request body (including dateRange)
+      const params = requestBodyData.params || {}
+      
+      // Railway expects: { "clientId": "melrose", "params": { ... } }
       const requestBody = { 
         clientId: normalizedClientId,
-        params: {}
+        params
+      }
+      
+      // Log dateRange if present (server-side only, no secrets)
+      if (params.dateRange) {
+        console.log(`[API /run] Date range: preset=${params.dateRange.preset}, start=${params.dateRange.start}, end=${params.dateRange.end}`)
       }
       
       const response = await fetch(railwayUrl, {

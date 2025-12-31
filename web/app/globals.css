@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "driver.js/dist/driver.css";
 
 /* Base theme (default/fallback) */
 :root {
@@ -165,4 +166,102 @@ body {
 
 [data-client-theme] tbody tr:hover {
   background-color: rgba(var(--primary-rgb, 99, 102, 241), 0.1) !important;
+}
+
+/* Driver.js Premium Theme Overrides */
+.driver-popover {
+  background: var(--surface) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+  color: var(--text) !important;
+  font-family: inherit !important;
+}
+
+.driver-popover-title {
+  color: var(--text) !important;
+  font-weight: 600 !important;
+  font-size: 1.125rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.driver-popover-description {
+  color: var(--muted) !important;
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+}
+
+.driver-popover-footer {
+  margin-top: 1rem !important;
+  display: flex !important;
+  gap: 0.5rem !important;
+  justify-content: flex-end !important;
+}
+
+.driver-popover-btn {
+  background: var(--primary) !important;
+  color: var(--text) !important;
+  border: none !important;
+  border-radius: calc(var(--radius) * 0.75) !important;
+  padding: 0.5rem 1rem !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.driver-popover-btn:hover {
+  opacity: 0.9 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+.driver-popover-btn.driver-popover-btn-secondary {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--card-border) !important;
+}
+
+.driver-popover-btn.driver-popover-btn-secondary:hover {
+  background: rgba(var(--primary-rgb, 99, 102, 241), 0.1) !important;
+}
+
+.driver-popover-close-btn {
+  color: var(--muted) !important;
+  opacity: 0.7 !important;
+}
+
+.driver-popover-close-btn:hover {
+  opacity: 1 !important;
+  color: var(--text) !important;
+}
+
+.driver-popover-progress-text {
+  color: var(--muted) !important;
+  font-size: 0.75rem !important;
+}
+
+.driver-popover-arrow {
+  border-color: var(--surface) !important;
+}
+
+.driver-popover-arrow-side-left {
+  border-right-color: var(--card-border) !important;
+}
+
+.driver-popover-arrow-side-right {
+  border-left-color: var(--card-border) !important;
+}
+
+.driver-popover-arrow-side-top {
+  border-bottom-color: var(--card-border) !important;
+}
+
+.driver-popover-arrow-side-bottom {
+  border-top-color: var(--card-border) !important;
+}
+
+/* Overlay */
+.driver-overlay {
+  background: rgba(0, 0, 0, 0.5) !important;
 }

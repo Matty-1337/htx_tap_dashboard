@@ -185,7 +185,7 @@ export function ActionRail({ actions, onActionUpdate, roleNames }: ActionRailPro
   }
 
   return (
-    <aside className="hidden lg:block w-80 flex-shrink-0 sticky top-20 h-[calc(100vh-5rem)] pt-8 pr-6">
+    <aside className="hidden lg:block w-80 flex-shrink-0 sticky top-20 h-[calc(100vh-5rem)] pt-8 pr-6" data-tour="rail.container">
       <div className="surface p-6 h-full overflow-y-auto" style={{ borderRadius: 'var(--radius)' }}>
         {/* Header */}
         <div className="mb-6">
@@ -196,7 +196,7 @@ export function ActionRail({ actions, onActionUpdate, roleNames }: ActionRailPro
         </div>
 
         {/* Assignee Filter */}
-        <div className="mb-4">
+        <div className="mb-4" data-tour="rail.assignee_filter">
           <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'rgba(var(--muted-rgb, 107, 114, 128), 0.1)' }}>
             {(['All', 'GM', 'Manager 1', 'Manager 2'] as const).map((filter) => (
               <button
@@ -312,7 +312,7 @@ export function ActionRail({ actions, onActionUpdate, roleNames }: ActionRailPro
                     </div>
 
                     {/* Assignee Dropdown */}
-                    <div className="mb-2">
+                    <div className="mb-2" data-tour="rail.action_assignee">
                       <label className="text-xs muted mb-1 block">Assigned to</label>
                       <select
                         value={assignee}
@@ -425,6 +425,7 @@ export function ActionRail({ actions, onActionUpdate, roleNames }: ActionRailPro
                           <button
                             onClick={() => handleMarkDone(action.id)}
                             className="text-xs px-2 py-1 transition-colors ml-auto"
+                            data-tour="rail.action_status"
                             style={{
                               color: 'var(--primary)',
                               borderRadius: 'calc(var(--radius) / 2)',
