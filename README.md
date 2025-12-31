@@ -185,6 +185,16 @@ The backend maps client IDs to Supabase Storage folder names:
 - `bestregard` → `Bestregard/`
 - `fancy` → `Fancy/`
 
+## Client Login Links
+
+Each client has a dedicated login URL with clientId pre-selected:
+
+- **Melrose**: https://htx-tap-portal.vercel.app/melrose
+- **Bestregard**: https://htx-tap-portal.vercel.app/bestregard
+- **Fancy**: https://htx-tap-portal.vercel.app/fancy
+
+Users visiting these URLs will see a login form with only the access code field (clientId is locked to the route). Invalid client routes will return a 404 error.
+
 ## Adding a New Client
 
 1. **Backend**: Add entry to `CLIENT_FOLDER_MAP` in `main.py`:
