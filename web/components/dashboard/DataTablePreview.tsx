@@ -62,17 +62,28 @@ export function DataTablePreview({
   return (
     <GlassCard>
       <div className="p-6">
-        {title && <h3 className="text-xl font-semibold text-gray-900 mb-4">{title}</h3>}
+        {title && <h3 className="text-xl font-semibold mb-4" style={{ color: 'var(--text)' }}>{title}</h3>}
         <div className="overflow-x-auto">
           <div className="inline-block min-w-full align-middle">
-            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 rounded-lg">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50 sticky top-0">
+            <div
+              className="overflow-hidden rounded-lg"
+              style={{
+                boxShadow: 'var(--shadow)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--card-border)',
+              }}
+            >
+              <table className="min-w-full" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+                <thead className="sticky top-0" style={{ backgroundColor: 'var(--surface)', zIndex: 10 }}>
                   <tr>
                     {displayColumns.map((col) => (
                       <th
                         key={col}
-                        className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider"
+                        className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider"
+                        style={{
+                          color: 'var(--text)',
+                          borderBottom: '1px solid var(--card-border)',
+                        }}
                       >
                         {prettifyColumnName(col)}
                       </th>
@@ -80,31 +91,38 @@ export function DataTablePreview({
                   </tr>
                 </thead>
                 <AnimatePresence>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {displayRows.map((row, idx) => (
-                      <motion.tr
-                        key={idx}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2, delay: idx * 0.01 }}
-                        onClick={() => onRowClick && onRowClick(row)}
-                        className={clsx(
-                          'hover:bg-gray-50 transition-colors',
-                          idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50',
-                          onRowClick && 'cursor-pointer'
-                        )}
-                      >
-                        {displayColumns.map((col) => (
-                          <td
-                            key={col}
-                            className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
-                          >
-                            {formatCellValue(row[col], col)}
-                          </td>
-                        ))}
-                      </motion.tr>
-                    ))}
+                  <tbody>
+                    {displayRows.map((row, idx) => {
+                      const baseBg = idx % 2 === 0 ? 'var(--surface)' : 'transparent'
+                      
+                      return (
+                        <motion.tr
+                          key={idx}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.2, delay: idx * 0.01 }}
+                          onClick={() => onRowClick && onRowClick(row)}
+                          className={clsx('transition-colors', onRowClick && 'cursor-pointer')}
+                          style={{
+                            backgroundColor: baseBg,
+                          }}
+                        >
+                          {displayColumns.map((col) => (
+                            <td
+                              key={col}
+                              className="px-6 py-4 whitespace-nowrap text-sm"
+                              style={{
+                                color: 'var(--text)',
+                                borderBottom: '1px solid var(--card-border)',
+                              }}
+                            >
+                              {formatCellValue(row[col], col)}
+                            </td>
+                          ))}
+                        </motion.tr>
+                      )
+                    })}
                   </tbody>
                 </AnimatePresence>
               </table>
@@ -119,7 +137,14 @@ export function DataTablePreview({
               setExpanded(true)
               setExpandedRows(100)
             }}
-            className="mt-4 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            className="mt-4 text-sm font-medium"
+            style={{ color: 'var(--primary)' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--secondary)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--primary)'
+            }}
           >
             View more ({data.length - maxRows} more rows)
           </motion.button>
@@ -129,12 +154,19 @@ export function DataTablePreview({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             onClick={() => setExpandedRows(Math.min(expandedRows + 50, data.length))}
-            className="mt-2 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+            className="mt-2 text-sm font-medium"
+            style={{ color: 'var(--primary)' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = 'var(--secondary)'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = 'var(--primary)'
+            }}
           >
             Load more ({Math.min(50, data.length - expandedRows)} more)
           </motion.button>
         )}
-        <div className="mt-4 text-xs text-gray-500">
+        <div className="mt-4 text-xs muted">
           Showing {displayRows.length} of {data.length} rows
         </div>
       </div>

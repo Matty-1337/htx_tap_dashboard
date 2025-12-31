@@ -85,3 +85,84 @@ body {
   color: var(--text);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Utility Classes */
+.surface {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.accent-glow {
+  box-shadow: var(--glow);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.bg-app {
+  background: var(--bg);
+  color: var(--text);
+  position: relative;
+}
+
+/* Best Regards - Checkerboard Pattern */
+[data-client-theme="bestregard"] .bg-app::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--bg-pattern-opacity);
+  background-image: 
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 20px,
+      rgba(255, 255, 255, 0.03) 20px,
+      rgba(255, 255, 255, 0.03) 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 20px,
+      rgba(255, 255, 255, 0.03) 20px,
+      rgba(255, 255, 255, 0.03) 40px
+    );
+  z-index: 0;
+}
+
+[data-client-theme="bestregard"] .bg-app > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Fancy - Velvet/Onyx Gradient on Surfaces */
+[data-client-theme="fancy"] .surface {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0) 100%),
+              var(--surface);
+  border-color: var(--card-border);
+}
+
+/* Melrose - LED-like Glow on Active Elements */
+[data-client-theme="melrose"] .nav-active,
+[data-client-theme="melrose"] .primary-btn,
+[data-client-theme="melrose"] .kpi-accent {
+  box-shadow: var(--glow);
+}
+
+[data-client-theme="melrose"] .nav-active:hover,
+[data-client-theme="melrose"] .primary-btn:hover {
+  box-shadow: var(--glow), 0 0 20px rgba(206, 140, 113, 0.3);
+}
+
+/* Table row hover with primary color tint */
+[data-client-theme] tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+[data-client-theme] tbody tr:hover {
+  background-color: rgba(var(--primary-rgb, 99, 102, 241), 0.1) !important;
+}

@@ -25,7 +25,7 @@ export const Section = forwardRef<HTMLElement, SectionProps>(
           viewport={{ once: true, margin: '-100px' }}
           transition={{ duration: 0.5 }}
         >
-          <h2 className="text-3xl font-semibold text-gray-900 mb-6">{title}</h2>
+          <h2 className="text-3xl font-semibold mb-6" style={{ color: 'var(--text)' }}>{title}</h2>
           {children}
         </motion.div>
       </section>

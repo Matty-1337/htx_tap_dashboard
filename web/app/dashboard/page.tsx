@@ -368,7 +368,7 @@ export default function DashboardPage() {
                 onClick={handleRunAnalysis}
                 disabled={isRunning}
                 className={clsx(
-                  'px-4 py-2 font-medium transition-all',
+                  'px-4 py-2 font-medium transition-all primary-btn',
                   'text-white',
                   'disabled:opacity-50 disabled:cursor-not-allowed'
                 )}
@@ -378,17 +378,33 @@ export default function DashboardPage() {
                   boxShadow: 'var(--shadow)',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = 'var(--glow)'
+                  if (!isRunning) {
+                    e.currentTarget.style.boxShadow = 'var(--glow)'
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = 'var(--shadow)'
+                  if (!isRunning) {
+                    e.currentTarget.style.boxShadow = 'var(--shadow)'
+                  }
                 }}
               >
                 {isRunning ? 'Running...' : 'Run Analysis'}
               </button>
               <button
                 onClick={handleLogout}
-                className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+                className="px-3 py-2 text-sm transition-colors"
+                style={{
+                  color: 'var(--muted)',
+                  borderRadius: 'var(--radius)',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color = 'var(--text)'
+                  e.currentTarget.style.backgroundColor = 'rgba(var(--muted-rgb, 107, 114, 128), 0.1)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color = 'var(--muted)'
+                  e.currentTarget.style.backgroundColor = 'transparent'
+                }}
               >
                 Logout
               </button>

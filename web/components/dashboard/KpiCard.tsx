@@ -28,24 +28,21 @@ export function KpiCard({ label, value, filteredValue, delay = 0, className }: K
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3, delay }}
       whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
-      className={clsx(
-        'bg-gradient-to-br from-white to-gray-50/50 backdrop-blur-sm',
-        'border border-gray-200/50 rounded-xl p-6',
-        'shadow-lg shadow-gray-200/30',
-        'transition-all duration-300',
-        className
-      )}
+      className={clsx('surface p-6 kpi-accent transition-all duration-300', className)}
     >
-      <div className="text-sm font-medium text-gray-600 mb-2">{displayLabel}</div>
-      <div className="text-3xl font-bold text-gray-900">{formattedValue}</div>
+      <div className="text-sm font-medium mb-2 muted">{displayLabel}</div>
+      <div className="text-3xl font-bold" style={{ color: 'var(--text)' }}>{formattedValue}</div>
       {formattedFilteredValue && (
         <div className="mt-2 flex items-center gap-2">
-          <span className="text-sm text-gray-600">Filtered: {formattedFilteredValue}</span>
+          <span className="text-sm muted">Filtered: {formattedFilteredValue}</span>
           {delta !== null && (
-            <span className={clsx(
-              'text-xs font-medium px-2 py-0.5 rounded',
-              delta < 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-            )}>
+            <span
+              className="text-xs font-medium px-2 py-0.5 rounded"
+              style={{
+                backgroundColor: delta < 0 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)',
+                color: delta < 0 ? 'rgba(239, 68, 68, 1)' : 'rgba(34, 197, 94, 1)',
+              }}
+            >
               Δ {delta > 0 ? '+' : ''}{delta.toFixed(1)}%
             </span>
           )}
