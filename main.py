@@ -396,17 +396,28 @@ async def run_analysis(request: RunRequest):
         logger.info(f"Analysis completed successfully for {request.clientId} in {execution_time:.2f}s")
         return response_data
         
-    except HTTPException:
-        # Re-raise HTTPException as-is (already has proper detail)
-        raise
+    except HTTPException as e:
+        # Convert HTTPException to JSONResponse with request_id
+        error_detail = e.detail if isinstance(e.detail, dict) else {"message": str(e.detail)}
+        error_detail["request_id"] = request_id
+        logger.error(f"HTTPException in /run: status={e.status_code} request_id={request_id}")
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "error": "HTTPException",
+                "detail": error_detail,
+                "request_id": request_id
+            }
+        )
     except ValueError as e:
-        logger.error(f"ValueError in /run: {str(e)}")
-        raise HTTPException(
+        logger.error(f"ValueError in /run: {str(e)} request_id={request_id}")
+        return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
+            content={
                 "error": "InvalidRequest",
                 "details": str(e),
-                "message": f"{str(e)}. Hint: clientId must be one of: melrose, bestregard, fancy"
+                "message": f"{str(e)}. Hint: clientId must be one of: melrose, bestregard, fancy",
+                "request_id": request_id
             }
         )
     except Exception as e:
@@ -414,14 +425,14 @@ async def run_analysis(request: RunRequest):
         error_trace = traceback.format_exc()
         error_msg = str(e)
         error_type = e.__class__.__name__
-        logger.error(f"Unexpected error in /run: {error_type}: {error_msg}")
+        logger.error(f"Unhandled exception in /run: {error_type}: {error_msg} request_id={request_id}")
         logger.error(f"Traceback: {error_trace}")
-        raise HTTPException(
+        return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "error": "RunFailed",
+            content={
+                "error": "Unhandled",
                 "details": f"{error_type}: {error_msg}",
-                "message": "Analysis execution failed. Check Railway logs for details."
+                "request_id": request_id
             }
         )
 
