@@ -664,7 +664,21 @@ export default function DashboardPage() {
         </main>
 
         {/* Right Action Rail */}
-        <ActionRail actions={actionItems} />
+        <ActionRail 
+          actions={actionItems} 
+          onActionUpdate={async () => {
+            // Refresh actions from server
+            try {
+              const response = await fetch('/api/actions')
+              if (response.ok) {
+                const result = await response.json()
+                setActionItems(result.actions || [])
+              }
+            } catch (err) {
+              console.error('Failed to refresh actions:', err)
+            }
+          }}
+        />
       </div>
     </div>
   )
