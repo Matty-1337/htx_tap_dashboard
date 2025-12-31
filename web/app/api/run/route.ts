@@ -87,86 +87,70 @@ export async function POST(request: NextRequest) {
     const apiBase = (base || 'http://127.0.0.1:8000').replace(/\/$/, '')
     const railwayUrl = `${apiBase}/run`
     
-    // Dev-only logging of resolved URL
-    if (!isProduction) {
-      console.log(`[API /run] Backend URL: ${railwayUrl}`)
-    }
+      // Normalize clientId to lowercase (Railway expects: melrose, bestregard, fancy)
+      const normalizedClientId = clientId.toLowerCase().trim()
 
-    // Normalize clientId to lowercase (Railway expects: melrose, bestregard, fancy)
-    const normalizedClientId = clientId.toLowerCase().trim()
-
-    // Server-side logging (no secrets)
-    if (isAdminSession) {
-      console.log(`[API /run] Admin session: viewing as clientId=${normalizedClientId}`)
-    } else {
-      console.log(`[API /run] Client session: clientId=${normalizedClientId}`)
-    }
-
-    // Validate clientId matches expected values
-    const validClientIds = ['melrose', 'bestregard', 'fancy']
-    if (!validClientIds.includes(normalizedClientId)) {
-      return NextResponse.json(
-        { error: 'Invalid clientId', details: `clientId must be one of: ${validClientIds.join(', ')}` },
-        { status: 400 }
-      )
-    }
-
-    // Build request to Railway with timeout
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 120000) // 120s timeout
-
-    try {
-      // Extract params from request body (including dateRange)
-      const params = requestBodyData.params || {}
-      
-      // Railway expects: { "clientId": "melrose", "params": { ... } }
-      const requestBody = { 
-        clientId: normalizedClientId,
-        params
-      }
-      
-      // Log dateRange if present (server-side only, no secrets)
-      if (params.dateRange) {
-        console.log(`[API /run] Date range: preset=${params.dateRange.preset}, start=${params.dateRange.start}, end=${params.dateRange.end}`)
-      }
-      
-      const response = await fetch(railwayUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      })
-
-      clearTimeout(timeoutId)
-
-      // Handle non-2xx responses
-      if (!response.ok) {
-        let errorDetails = 'Backend error'
-        try {
-          const errorText = await response.text()
-          // Cap error message length to prevent leaking sensitive data
-          errorDetails = errorText.length > 500 
-            ? errorText.substring(0, 500) + '...' 
-            : errorText
-        } catch {
-          errorDetails = `HTTP ${response.status} ${response.statusText}`
-        }
-
+      // Validate clientId matches expected values
+      const validClientIds = ['melrose', 'bestregard', 'fancy']
+      if (!validClientIds.includes(normalizedClientId)) {
         return NextResponse.json(
-          { 
-            error: 'Backend error',
-            details: errorDetails,
-            status: response.status
-          },
-          { status: response.status }
+          { error: 'Invalid clientId', details: `clientId must be one of: ${validClientIds.join(', ')}` },
+          { status: 400 }
         )
       }
 
-      // Parse and return successful response
-      const data = await response.json()
-      return NextResponse.json(data)
+      // Build request to Railway with timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000) // 120s timeout
+
+      try {
+        // Extract params from request body (including dateRange)
+        const params = requestBodyData.params || {}
+        
+        // Backend expects: { "clientId": "melrose", "params": { ... } }
+        const requestBody = { 
+          clientId: normalizedClientId,
+          params
+        }
+        
+        // Dev-only logging (no secrets)
+        if (!isProduction) {
+          console.log(`[API /run] Calling backend: ${railwayUrl}`)
+          console.log(`[API /run] Client: ${normalizedClientId}, params keys: ${Object.keys(params).join(', ')}`)
+        }
+        
+        const response = await fetch(railwayUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        })
+
+        clearTimeout(timeoutId)
+
+        // Dev-only logging of status
+        if (!isProduction) {
+          console.log(`[API /run] Backend response status: ${response.status}`)
+        }
+
+        // Parse response body (both success and error)
+        let responseData: any
+        const contentType = response.headers.get('content-type')
+        if (contentType?.includes('application/json')) {
+          responseData = await response.json()
+        } else {
+          const text = await response.text()
+          try {
+            responseData = JSON.parse(text)
+          } catch {
+            responseData = { detail: text, message: text }
+          }
+        }
+
+        // Return backend response with preserved status code
+        return NextResponse.json(responseData, { status: response.status })
 
     } catch (fetchError: any) {
       clearTimeout(timeoutId)

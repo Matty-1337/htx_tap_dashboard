@@ -32,20 +32,49 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid clientId' }, { status: 400 })
     }
 
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
+    const hasSupabaseConfig = !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    // In dev, return empty array if Supabase not configured
+    if (!isProduction && !hasSupabaseConfig) {
+      console.log('[API /actions] Supabase not configured in dev, returning empty array')
+      return NextResponse.json({ actions: [] })
+    }
+
     // Fetch actions from last 90 days
     const ninetyDaysAgo = new Date()
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
 
-    const { data, error } = await supabase
-      .from('action_items')
-      .select('*')
-      .eq('client_id', clientId)
-      .in('status', ['open', 'done'])
-      .gte('created_at', ninetyDaysAgo.toISOString())
-      .order('created_at', { ascending: false })
+    let data: any[] | null = null
+    let error: any = null
+
+    try {
+      const result = await supabase
+        .from('action_items')
+        .select('*')
+        .eq('client_id', clientId)
+        .in('status', ['open', 'done'])
+        .gte('created_at', ninetyDaysAgo.toISOString())
+        .order('created_at', { ascending: false })
+      
+      data = result.data
+      error = result.error
+    } catch (supabaseInitError: any) {
+      // Supabase client initialization error (missing env vars)
+      if (!isProduction) {
+        console.log('[API /actions] Supabase initialization error in dev, returning empty array')
+        return NextResponse.json({ actions: [] })
+      }
+      throw supabaseInitError
+    }
 
     if (error) {
       console.error('Supabase error:', error)
+      // In dev, return empty array instead of error
+      if (!isProduction) {
+        console.log('[API /actions] Supabase error in dev, returning empty array')
+        return NextResponse.json({ actions: [] })
+      }
       return NextResponse.json({ error: 'Database error', details: error.message }, { status: 500 })
     }
 
@@ -63,6 +92,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ actions })
   } catch (error: any) {
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
+    
+    // In dev, return empty array on any error
+    if (!isProduction) {
+      console.log('[API /actions] Error in dev, returning empty array:', error.message)
+      return NextResponse.json({ actions: [] })
+    }
+    
     console.error('GET /api/actions error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
@@ -79,6 +116,15 @@ export async function POST(request: NextRequest) {
     const validClientIds = ['melrose', 'bestregard', 'fancy']
     if (!validClientIds.includes(clientId)) {
       return NextResponse.json({ error: 'Invalid clientId' }, { status: 400 })
+    }
+
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
+    const hasSupabaseConfig = !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    // In dev, return empty array if Supabase not configured
+    if (!isProduction && !hasSupabaseConfig) {
+      console.log('[API /actions POST] Supabase not configured in dev, returning empty array')
+      return NextResponse.json({ actions: [] })
     }
 
     // Get analysis payload from request body
@@ -221,6 +267,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ actions: upsertedActions })
   } catch (error: any) {
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
+    
+    // In dev, return empty array on any error
+    if (!isProduction) {
+      console.log('[API /actions POST] Error in dev, returning empty array:', error.message)
+      return NextResponse.json({ actions: [] })
+    }
+    
     console.error('POST /api/actions error:', error)
     return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 })
   }
