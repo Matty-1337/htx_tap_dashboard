@@ -512,6 +512,41 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Top Actions Card */}
+            {topActions.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--text)' }}>Top Actions</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {topActions.map((action) => (
+                    <GlassCard key={action.id} className="p-4">
+                      <div className="flex items-start gap-2 mb-2">
+                        <PillBadge
+                          variant="default"
+                          className="text-xs"
+                          style={{
+                            backgroundColor: 'var(--primary)',
+                            color: 'var(--text)',
+                            opacity: 0.2,
+                          }}
+                        >
+                          {action.priority.toUpperCase()}
+                        </PillBadge>
+                      </div>
+                      <h4 className="font-semibold text-sm mb-2" style={{ color: 'var(--text)' }}>
+                        {action.title}
+                      </h4>
+                      {action.estimatedImpactUsd && (
+                        <p className="text-xs mb-2" style={{ color: 'var(--secondary)' }}>
+                          Est. upside: ${action.estimatedImpactUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </p>
+                      )}
+                      <p className="text-xs muted line-clamp-2">{action.rationale}</p>
+                    </GlassCard>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* KPI Cards */}
             <AnimatePresence>
               {kpiEntries.length > 0 ? (
