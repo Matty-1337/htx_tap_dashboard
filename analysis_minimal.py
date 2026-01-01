@@ -270,11 +270,16 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     hour_of_day_data = _compute_hourly_revenue(df, schema)  # Step 5: Use hour_of_day (Order Date attribution)
     day_of_week_data = _compute_day_of_week(df, schema)     # Step 5: Order Date attribution
     
+    # Revenue Heatmap: hour × day grid (168 cells = 24 hours × 7 days)
+    revenue_heatmap_data = _compute_revenue_heatmap(df, schema)
+    
     charts = {
         "hour_of_day": hour_of_day_data,
         "day_of_week": day_of_week_data,
-        # Legacy key for backward compatibility
-        "hourly_revenue": hour_of_day_data
+        # Revenue heatmap with hour AND day breakdown
+        "revenue_heatmap": revenue_heatmap_data,
+        # Legacy key for backward compatibility - NOW INCLUDES DAY for heatmap rendering
+        "hourly_revenue": revenue_heatmap_data
     }
     
     # ============================================================
@@ -288,7 +293,7 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     
     # Log chart keys and lengths (safe, no secrets)
     logger.info(f"CHART_KEYS={list(charts.keys())}")
-    logger.info(f"Charts generated: hour_of_day={len(charts['hour_of_day'])} rows, day_of_week={len(charts['day_of_week'])} rows")
+    logger.info(f"Charts generated: hour_of_day={len(charts['hour_of_day'])} rows, day_of_week={len(charts['day_of_week'])} rows, revenue_heatmap={len(charts['revenue_heatmap'])} cells")
     
     # data_coverage was already computed from original dataset (before filtering)
     # Update rowCount to reflect filtered data
@@ -313,7 +318,8 @@ def _empty_response(client_id: str) -> Dict[str, Any]:
         "charts": {
             "hour_of_day": [],
             "day_of_week": [],
-            "hourly_revenue": []  # Legacy key
+            "revenue_heatmap": [],
+            "hourly_revenue": []  # Legacy key (now contains hour+day for heatmap)
         },
         "tables": {
             "waste_efficiency": {"columns": ["message"], "data": [{"message": "No data available"}]},
@@ -571,6 +577,85 @@ def _compute_day_of_week(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> 
         
     except Exception as e:
         logger.warning(f"Failed to compute day_of_week chart: {e}")
+        return []
+
+
+def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
+    """
+    Compute revenue heatmap data with hour AND day breakdown.
+    
+    Returns: List of dicts with { hour, day, revenue } for each hour-day combination.
+    This creates a full 24×7 grid (168 cells) for the heatmap visualization.
+    
+    HARD REQUIREMENT: Uses "Order Date" as the ONLY timestamp for attribution.
+    """
+    amount_col = schema.get("amount")
+    if not amount_col:
+        logger.warning("Revenue heatmap: No amount column found")
+        return []
+    
+    # HARD REQUIREMENT: Use "Order Date" specifically (single source of truth)
+    order_date_col = None
+    for col in df.columns:
+        if col.lower() == "order date":
+            order_date_col = col
+            break
+    
+    if not order_date_col or order_date_col not in df.columns:
+        logger.warning(f"Revenue heatmap: 'Order Date' column not found. Available columns: {list(df.columns)[:10]}")
+        return []
+    
+    try:
+        df_copy = df.copy()
+        
+        # Normalize types safely
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
+        
+        # Drop rows where Order Date is NaT
+        df_copy = df_copy.dropna(subset=[order_date_col])
+        
+        if df_copy.empty:
+            logger.warning(f"Revenue heatmap: All dates invalid in 'Order Date'")
+            return []
+        
+        # Extract hour and day of week
+        df_copy['hour'] = df_copy[order_date_col].dt.hour
+        df_copy['day_num'] = df_copy[order_date_col].dt.dayofweek  # 0=Monday, 6=Sunday
+        df_copy['day'] = df_copy['day_num'].map(lambda x: DAY_NAMES[x] if 0 <= x <= 6 else 'Mon')
+        
+        logger.info(f"Revenue heatmap: Extracted hour and day from 'Order Date' ({len(df_copy)} valid rows)")
+        
+        # Aggregate by hour AND day: sum Net Price
+        hourly_daily = df_copy.groupby(['hour', 'day'], as_index=False).agg({amount_col: 'sum'})
+        hourly_daily.columns = ['hour', 'day', 'revenue']
+        
+        # Create full 24×7 grid (all hour-day combinations)
+        from itertools import product
+        all_combinations = list(product(range(24), DAY_NAMES))
+        all_grid = pd.DataFrame(all_combinations, columns=['hour', 'day'])
+        
+        # Merge with actual data, fill missing with 0
+        heatmap = all_grid.merge(hourly_daily, on=['hour', 'day'], how='left').fillna(0)
+        
+        # Ensure types
+        heatmap['hour'] = heatmap['hour'].astype(int)
+        heatmap['day'] = heatmap['day'].astype(str)
+        heatmap['revenue'] = heatmap['revenue'].astype(float)
+        
+        # Sort by hour then by day order
+        day_order = {day: i for i, day in enumerate(DAY_NAMES)}
+        heatmap['day_sort'] = heatmap['day'].map(day_order)
+        heatmap = heatmap.sort_values(['hour', 'day_sort']).drop('day_sort', axis=1)
+        
+        # Convert to list of dicts
+        result = heatmap.to_dict('records')
+        
+        logger.info(f"Revenue heatmap: Generated {len(result)} cells (24 hours × 7 days)")
+        return result
+        
+    except Exception as e:
+        logger.warning(f"Revenue heatmap: Failed to compute: {e}")
         return []
 
 
