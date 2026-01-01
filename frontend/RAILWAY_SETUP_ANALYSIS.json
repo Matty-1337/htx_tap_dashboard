@@ -1,0 +1,92 @@
+{
+  "repo": {
+    "url": "https://github.com/Matty-1337/htx_tap_dashboard.git",
+    "default_branch": "main",
+    "is_monorepo": false,
+    "key_paths": [
+      "app.py",
+      "htx_tap_analytics.py",
+      "executive_dashboard.py",
+      "executive_visualizations.py",
+      "requirements.txt"
+    ]
+  },
+  "python_run": {
+    "command": "streamlit run app.py",
+    "notes": "Current app is Streamlit-based. For Railway backend, we'll need FastAPI wrapper. Local dev: streamlit run app.py --server.port 8501"
+  },
+  "analysis_entry": [
+    {
+      "file": "htx_tap_analytics.py",
+      "function": "run_full_analysis",
+      "signature_guess": "run_full_analysis(client, bucket: str, folder: str, upload_to_db: bool = False, report_period: str = None) -> Dict",
+      "returns": "Dict containing: waste_efficiency (DataFrame), bottle_conversion (DataFrame), bottle_summary (dict), menu_volatility (DataFrame), discount_analysis (DataFrame), approver_analysis (DataFrame), discount_red_flags (list), food_attachment (DataFrame), attachment_summary (dict), hourly_analysis (DataFrame), dow_analysis (DataFrame), employee_performance (DataFrame)",
+      "side_effects": "Optionally uploads results to Supabase tables if upload_to_db=True. Loads CSV files from Supabase Storage bucket/folder."
+    }
+  ],
+  "ui_outputs": [
+    "Key Performance Indicators (KPIs): Total Revenue, Transactions, Avg Order Value, Items Sold, Unique Items",
+    "Revenue Trend Chart with 7-day moving average",
+    "Top 15 Menu Items by Revenue (horizontal bar chart)",
+    "Revenue Heatmap: Day of Week × Hour",
+    "Revenue Distribution by Category (pie chart)",
+    "Revenue by Meal Period (bar chart)",
+    "Weekday vs Weekend Comparison",
+    "Profit Engines: Server Friction Coefficient, Menu Engineering Matrix, Labor-to-Revenue Sync, Void Forensics, Upsell Velocity, Peak Hour Throughput, CLV Predictor",
+    "Advanced Analytics: Waste Efficiency, Bottle Conversion, Menu Volatility, Food Attachment, Peak Hours, Discount Analysis",
+    "Executive Dashboard: Server Performance Metrics (Grades A/B/C), Sales Per Hour, Hustle Scores, Void Rates",
+    "Data Tables: Raw data view, Server metrics table, Shift performance summary",
+    "Export Downloads: Executive Summary PDF, Full Dataset CSV"
+  ],
+  "supabase": {
+    "buckets": ["client-data"],
+    "client_folders": {
+      "melrose": "Melrose",
+      "bestregard": "Bestregard",
+      "fancy": "Fancy"
+    },
+    "path_selection_logic": "Currently hardcoded default 'Melrose' in app.py line 975 (st.text_input with value='Melrose'). User manually enters CLIENT_FOLDER in Streamlit sidebar. Path construction: f'{CLIENT_FOLDER}/{filename}' or just filename if CLIENT_FOLDER empty. Bucket name from st.secrets.get('SUPABASE_BUCKET', 'client-data'). For Railway: clientId parameter should map directly to folder name (e.g., 'melrose' -> 'Melrose' folder in bucket)."
+  },
+  "clients": {
+    "ids": ["melrose", "bestregard", "fancy"],
+    "exact_strings_confirmed": true,
+    "notes": "Folder names confirmed by user: 'Melrose', 'Bestregard', 'Fancy' in Supabase Storage bucket 'client-data'. Client IDs should map: melrose->Melrose, bestregard->Bestregard, fancy->Fancy"
+  },
+  "simple_login": {
+    "recommended_method": "code->httpOnly cookie session",
+    "env_vars_needed": [
+      "LOGIN_CODE_MELROSE",
+      "LOGIN_CODE_BESTREGARD",
+      "LOGIN_CODE_FANCY",
+      "SESSION_SECRET"
+    ],
+    "notes": "Next.js: POST /api/login with { code: string }. Verify code against env vars. Set httpOnly cookie with { clientId, expires }. Middleware checks cookie on protected routes. Simple, no database needed. Codes can be rotated via env vars. Session duration: 7-30 days recommended."
+  },
+  "railway_backend": {
+    "deploy_method": "nixpacks",
+    "start_command": "uvicorn main:app --host 0.0.0.0 --port $PORT",
+    "port": "$PORT",
+    "env_vars_needed_names_only": [
+      "SUPABASE_URL",
+      "SUPABASE_SERVICE_ROLE_KEY",
+      "SUPABASE_BUCKET",
+      "PORT"
+    ],
+    "api_endpoints": {
+      "health": "GET /health",
+      "run": "POST /run"
+    },
+    "cors_notes": "Enable CORS for Next.js frontend domain. Allow credentials for cookie-based auth. Recommended: origin whitelist or use Vercel deployment URL."
+  },
+  "unknowns_or_risks": [
+    "Folder names confirmed: 'Melrose', 'Bestregard', 'Fancy' in Supabase Storage bucket 'client-data'",
+    "Current app uses Streamlit secrets (.streamlit/secrets.toml) - Railway will need env vars instead",
+    "run_full_analysis() loads data from Supabase - ensure Railway service has network access to Supabase",
+    "Analysis function may take 30-60 seconds for large datasets - consider async endpoint or job queue",
+    "Client folder selection currently manual (text input) - need to implement clientId -> folder mapping",
+    "No existing Railway service - will need to create new service and link repo",
+    "FastAPI wrapper doesn't exist yet - needs to be created to call run_full_analysis()",
+    "Port configuration: Streamlit uses 8501, FastAPI should use Railway's $PORT env var",
+    "Dependencies: requirements.txt exists but may need additional packages for FastAPI (fastapi, uvicorn, python-multipart)"
+  ]
+}

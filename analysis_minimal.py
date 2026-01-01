@@ -267,8 +267,10 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     # STEP 3: Generate Charts
     # ============================================================
     charts = {
-        "hourly_revenue": _compute_hourly_revenue(df, schema),
-        "day_of_week": _compute_day_of_week(df, schema)
+        "hour_of_day": _compute_hourly_revenue(df, schema),  # Step 5: Use hour_of_day (Order Date attribution)
+        "day_of_week": _compute_day_of_week(df, schema),     # Step 5: Order Date attribution
+        # Legacy key for backward compatibility
+        "hourly_revenue": _compute_hourly_revenue(df, schema)
     }
     
     # ============================================================
@@ -281,7 +283,7 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     }
     
     # Log chart lengths (safe)
-    logger.info(f"Charts generated: hourly_revenue={len(charts['hourly_revenue'])}, day_of_week={len(charts['day_of_week'])}")
+    logger.info(f"Charts generated: hour_of_day={len(charts['hour_of_day'])}, day_of_week={len(charts['day_of_week'])}")
     
     # data_coverage was already computed from original dataset (before filtering)
     # Update rowCount to reflect filtered data
@@ -304,8 +306,9 @@ def _empty_response(client_id: str) -> Dict[str, Any]:
         "clientId": client_id,
         "kpis": {},
         "charts": {
-            "hourly_revenue": [],
-            "day_of_week": []
+            "hour_of_day": [],
+            "day_of_week": [],
+            "hourly_revenue": []  # Legacy key
         },
         "tables": {
             "waste_efficiency": {"columns": ["message"], "data": [{"message": "No data available"}]},
@@ -402,109 +405,165 @@ def _compute_kpis(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> Dict[st
 
 
 def _compute_hourly_revenue(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
-    """Compute hourly revenue chart data."""
+    """
+    Compute hourly revenue chart data.
+    
+    HARD REQUIREMENT: Uses "Order Date" as the ONLY timestamp for hourly attribution.
+    Rationale: staffing/ops alignment requires guest-arrival ordering time, not payment time.
+    """
     amount_col = schema.get("amount")
     if not amount_col:
         logger.warning("Hourly revenue chart: No amount column found")
         return []
     
-    # Use detected datetime column from schema
-    datetime_col = schema.get("datetime")
-    if not datetime_col or datetime_col not in df.columns:
-        logger.warning(f"Hourly revenue chart: No datetime column found (schema had: {datetime_col})")
+    # HARD REQUIREMENT: Use "Order Date" specifically (single source of truth)
+    order_date_col = None
+    for col in df.columns:
+        if col.lower() == "order date":
+            order_date_col = col
+            break
+    
+    if not order_date_col or order_date_col not in df.columns:
+        logger.warning(f"Hourly revenue chart: 'Order Date' column not found. Available columns: {list(df.columns)[:10]}")
         return []
     
-    hour_col = None
+    # Get order_id column if available
+    order_id_col = schema.get("order_id")
     
-    # Try to derive hour from datetime column
     try:
         df_copy = df.copy()
-        # Parse datetime column
-        df_copy['_datetime'] = pd.to_datetime(df_copy[datetime_col], errors='coerce', utc=True)
-        # Drop invalid dates
-        df_copy = df_copy.dropna(subset=['_datetime'])
+        
+        # Normalize types safely
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
+        
+        # Drop rows where Order Date is NaT
+        df_copy = df_copy.dropna(subset=[order_date_col])
         
         if df_copy.empty:
-            logger.warning(f"Hourly revenue chart: All dates invalid in '{datetime_col}'")
+            logger.warning(f"Hourly revenue chart: All dates invalid in 'Order Date'")
             return []
         
-        df_copy['_hour'] = df_copy['_datetime'].dt.hour
-        hour_col = '_hour'
-        logger.info(f"Hourly revenue chart: Extracted hour from '{datetime_col}' ({len(df_copy)} valid rows)")
+        # Extract hour: pd.to_datetime(df["Order Date"]).dt.hour
+        df_copy['Hour'] = df_copy[order_date_col].dt.hour
+        
+        logger.info(f"Hourly revenue chart: Extracted hour from 'Order Date' ({len(df_copy)} valid rows)")
+        
+        # Aggregate by hour: sum Net Price and count unique Order Id
+        agg_dict = {amount_col: 'sum'}
+        if order_id_col and order_id_col in df_copy.columns:
+            agg_dict[order_id_col] = 'nunique'
+        
+        hourly = df_copy.groupby('Hour', as_index=False).agg(agg_dict)
+        
+        # Rename columns to match output contract
+        hourly.columns = ['Hour', 'Net Price', 'Order Id'] if order_id_col and order_id_col in df_copy.columns else ['Hour', 'Net Price']
+        
+        # Ensure all hours 0..23 exist (fill missing with 0 revenue + 0 orders)
+        all_hours = pd.DataFrame({'Hour': range(24)})
+        hourly = all_hours.merge(hourly, on='Hour', how='left').fillna(0)
+        
+        # Add Order Id column if missing (fill with 0)
+        if 'Order Id' not in hourly.columns:
+            hourly['Order Id'] = 0
+        
+        # Ensure types: Hour is int, Net Price is float, Order Id is int
+        hourly['Hour'] = hourly['Hour'].astype(int)
+        hourly['Net Price'] = hourly['Net Price'].astype(float)
+        hourly['Order Id'] = hourly['Order Id'].astype(int)
+        
+        # Sort ascending by Hour
+        hourly = hourly.sort_values('Hour')
+        
+        # Convert to list of dicts with exact keys: Hour, Net Price, Order Id
+        result = hourly.to_dict('records')
+        return result
+        
     except Exception as e:
-        logger.warning(f"Hourly revenue chart: Failed to extract hour from datetime column '{datetime_col}': {e}")
+        logger.warning(f"Hourly revenue chart: Failed to compute hourly revenue from 'Order Date': {e}")
         return []
-    
-    if not hour_col:
-        # No hour available
-        return []
-    
-    # Group by hour and sum revenue
-    hourly = df_copy.groupby(hour_col)[amount_col].sum().reset_index()
-    hourly.columns = ['Hour', 'Net Price']
-    
-    # Fill missing hours (0-23) with 0
-    all_hours = pd.DataFrame({'Hour': range(24)})
-    hourly = all_hours.merge(hourly, on='Hour', how='left').fillna(0)
-    
-    # Ensure Hour is int and Net Price is float
-    hourly['Hour'] = hourly['Hour'].astype(int)
-    hourly['Net Price'] = hourly['Net Price'].astype(float)
-    
-    # Convert to list of dicts with exact keys
-    result = hourly.to_dict('records')
-    return result
 
 
 def _compute_day_of_week(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
-    """Compute day-of-week revenue chart data."""
+    """
+    Compute day-of-week revenue chart data.
+    
+    HARD REQUIREMENT: Uses "Order Date" as the ONLY timestamp for day-of-week attribution.
+    Rationale: staffing/ops alignment requires guest-arrival ordering time, not payment time.
+    """
     amount_col = schema.get("amount")
     if not amount_col:
         logger.warning("Day of week chart: No amount column found")
         return []
     
-    # Use detected datetime column from schema
-    datetime_col = schema.get("datetime")
-    if not datetime_col or datetime_col not in df.columns:
-        logger.warning(f"Day of week chart: No datetime column found (schema had: {datetime_col})")
+    # HARD REQUIREMENT: Use "Order Date" specifically (single source of truth)
+    order_date_col = None
+    for col in df.columns:
+        if col.lower() == "order date":
+            order_date_col = col
+            break
+    
+    if not order_date_col or order_date_col not in df.columns:
+        logger.warning(f"Day of week chart: 'Order Date' column not found. Available columns: {list(df.columns)[:10]}")
         return []
+    
+    # Get order_id column if available
+    order_id_col = schema.get("order_id")
     
     try:
         df_copy = df.copy()
-        # Convert to datetime and extract day of week (0=Monday, 6=Sunday)
-        df_copy['_datetime'] = pd.to_datetime(df_copy[datetime_col], errors='coerce', utc=True)
-        df_copy = df_copy.dropna(subset=['_datetime'])
+        
+        # Normalize types safely
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
+        
+        # Drop rows where Order Date is NaT
+        df_copy = df_copy.dropna(subset=[order_date_col])
         
         if df_copy.empty:
-            logger.warning(f"Day of week chart: All dates invalid in '{datetime_col}'")
+            logger.warning(f"Day of week chart: All dates invalid in 'Order Date'")
             return []
         
-        logger.info(f"Day of week chart: Parsed '{datetime_col}' ({len(df_copy)} valid rows)")
+        logger.info(f"Day of week chart: Parsed 'Order Date' ({len(df_copy)} valid rows)")
         
-        df_copy['_day_of_week'] = df_copy['_datetime'].dt.dayofweek  # 0=Monday
-        df_copy['_day_name'] = df_copy['_day_of_week'].map(lambda x: DAY_NAMES[x])
+        # Extract day name (Monday..Sunday)
+        df_copy['Day'] = df_copy[order_date_col].dt.day_name()
         
-        # Group by day and sum revenue
-        daily = df_copy.groupby(['_day_of_week', '_day_name'])[amount_col].sum().reset_index()
-        daily.columns = ['_day_of_week', '_day_name', 'Net Price']
-        daily = daily.sort_values('_day_of_week')
+        # Force ordering Monday..Sunday (categorical order)
+        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        df_copy['Day'] = pd.Categorical(df_copy['Day'], categories=day_order, ordered=True)
         
-        # Fill missing days with 0
-        all_days = pd.DataFrame({
-            '_day_of_week': range(7),
-            '_day_name': DAY_NAMES
-        })
-        daily = all_days.merge(daily, on=['_day_of_week', '_day_name'], how='left').fillna(0)
+        # Aggregate by day: sum Net Price and count unique Order Id
+        agg_dict = {amount_col: 'sum'}
+        if order_id_col and order_id_col in df_copy.columns:
+            agg_dict[order_id_col] = 'nunique'
         
-        # Create result with exact keys
-        result = []
-        for _, row in daily.iterrows():
-            result.append({
-                "Day": row['_day_name'],
-                "Net Price": float(row['Net Price'])
-            })
+        daily = df_copy.groupby('Day', as_index=False).agg(agg_dict)
         
+        # Rename columns to match output contract
+        daily.columns = ['Day', 'Net Price', 'Order Id'] if order_id_col and order_id_col in df_copy.columns else ['Day', 'Net Price']
+        
+        # Fill missing days with 0 (ensure all 7 days exist)
+        all_days_df = pd.DataFrame({'Day': day_order})
+        daily = all_days_df.merge(daily, on='Day', how='left').fillna(0)
+        
+        # Add Order Id column if missing (fill with 0)
+        if 'Order Id' not in daily.columns:
+            daily['Order Id'] = 0
+        
+        # Ensure types: Day is string, Net Price is float, Order Id is int
+        daily['Day'] = daily['Day'].astype(str)
+        daily['Net Price'] = daily['Net Price'].astype(float)
+        daily['Order Id'] = daily['Order Id'].astype(int)
+        
+        # Sort by day order (Monday..Sunday)
+        daily['Day'] = pd.Categorical(daily['Day'], categories=day_order, ordered=True)
+        daily = daily.sort_values('Day')
+        
+        # Convert to list of dicts with exact keys: Day, Net Price, Order Id
+        result = daily.to_dict('records')
         return result
+        
     except Exception as e:
         logger.warning(f"Failed to compute day_of_week chart: {e}")
         return []

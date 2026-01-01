@@ -1,0 +1,468 @@
+@import "tailwindcss";
+@import "driver.js/dist/driver.css";
+
+/* ============================================
+   HTX TAP UI OVERHAUL - DESIGN SYSTEM TOKENS
+   Based on HTX_TAP_UI_OVERHAUL_SPEC.md
+   ============================================ */
+
+/* Base theme (default/fallback) - SPEC COMPLIANT */
+:root {
+  /* Legacy variables (for backward compatibility) */
+  --background: #0a0a0f;
+  --foreground: #ffffff;
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --text: #ffffff;
+  --muted: #71717a;
+  --primary: #6366f1;
+  --secondary: #818cf8;
+  --accent: #a5b4fc;
+  --radius: 12px;
+  --card-border: rgba(99, 102, 241, 0.2);
+  --glow: 0 0 20px rgba(99, 102, 241, 0.4);
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --bg-pattern-opacity: 0;
+
+  /* SPEC: Background Layers */
+  --bg-primary: #0a0a0f;      /* Deepest black - main background */
+  --bg-secondary: #12121a;    /* Card backgrounds */
+  --bg-tertiary: #1a1a2e;     /* Elevated elements */
+  --bg-hover: #252538;         /* Hover states */
+
+  /* SPEC: Accent Colors */
+  --accent-primary: #6366f1;  /* Indigo - primary actions */
+  --accent-cyan: #22d3ee;     /* Cyan - highlights, links */
+  --accent-purple: #a855f7;   /* Purple - premium features */
+
+  /* SPEC: Status Colors */
+  --status-success: #22c55e;  /* Green - good, on target */
+  --status-warning: #eab308;   /* Yellow - monitor, caution */
+  --status-danger: #ef4444;    /* Red - critical, action needed */
+  --status-info: #3b82f6;      /* Blue - informational */
+
+  /* SPEC: Grade Colors */
+  --grade-a: #22c55e;         /* Green - Excellent */
+  --grade-b: #22d3ee;         /* Cyan - Good */
+  --grade-c: #f59e0b;         /* Amber - Needs Improvement */
+  --grade-d: #ef4444;         /* Red - Critical */
+
+  /* SPEC: Text Colors */
+  --text-primary: #ffffff;     /* White - headings, important */
+  --text-secondary: #a1a1aa;  /* Gray - body text */
+  --text-muted: #71717a;      /* Dark gray - labels, captions */
+
+  /* SPEC: Chart Colors (for multi-series) */
+  --chart-1: #6366f1;         /* Indigo */
+  --chart-2: #22d3ee;         /* Cyan */
+  --chart-3: #a855f7;         /* Purple */
+  --chart-4: #f43f5e;         /* Rose */
+  --chart-5: #22c55e;         /* Green */
+
+  /* SPEC: Spacing System */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* SPEC: Border Radius */
+  --radius-sm: 6px;           /* Buttons, badges */
+  --radius-md: 12px;          /* Cards, inputs */
+  --radius-lg: 16px;          /* Large cards, modals */
+  --radius-xl: 24px;          /* Hero sections */
+  --radius-full: 9999px;      /* Pills, avatars */
+
+  /* SPEC: Shadows */
+  --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+
+  /* SPEC: Glow Effects */
+  --glow-success: 0 0 20px rgba(34, 197, 94, 0.4);
+  --glow-warning: 0 0 20px rgba(234, 179, 8, 0.4);
+  --glow-danger: 0 0 20px rgba(239, 68, 68, 0.4);
+  --glow-accent: 0 0 20px rgba(99, 102, 241, 0.4);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Melrose Theme - Moody Architectural */
+[data-client-theme="melrose"] {
+  --bg: #0C0C0C;
+  --surface: #1E1E1E;
+  --text: #FAFAFA;
+  --muted: #A1A1AA;
+  --primary: #CE8C71;
+  --secondary: #F1E0CC;
+  --accent: #F1E0CC;
+  --radius: 20px;
+  --card-border: rgba(206, 140, 113, 0.2);
+  --glow: 0 0 15px rgba(206, 140, 113, 0.4);
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --bg-pattern-opacity: 0;
+}
+
+/* Fancy's HTX Theme - Art Deco Red & Onyx */
+[data-client-theme="fancy"] {
+  --bg: #050505;
+  --surface: #1A1A1A;
+  --text: #F5F5F0;
+  --muted: #787878;
+  --primary: #A61A1A;
+  --secondary: #D4AF37;
+  --accent: #D4AF37;
+  --radius: 4px;
+  --card-border: #D4AF37;
+  --glow: 0 0 10px rgba(212, 175, 55, 0.3);
+  --shadow: 0 8px 16px -4px rgba(0, 0, 0, 0.5), 0 4px 8px -2px rgba(0, 0, 0, 0.3);
+  --bg-pattern-opacity: 0;
+}
+
+/* Best Regards Theme - Garden Chic */
+[data-client-theme="bestregard"] {
+  --bg: #0F1C18;
+  --surface: #1B332D;
+  --text: #FFFFFF;
+  --muted: #A8BDB5;
+  --primary: #2E5C55;
+  --secondary: #C5A059;
+  --accent: #F4C2C2;
+  --radius: 12px;
+  --card-border: rgba(197, 160, 89, 0.3);
+  --glow: 0 0 12px rgba(46, 92, 85, 0.3);
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  --bg-pattern-opacity: 0.05;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Arial, Helvetica, sans-serif;
+}
+
+/* SPEC: Typography Hierarchy */
+.text-page-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.text-section-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.text-card-title {
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.text-body {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.text-caption {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.text-metric-large {
+  font-size: 48px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.text-metric-medium {
+  font-size: 32px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.text-metric-small {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+/* Utility Classes */
+.surface {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+/* SPEC: Premium Card (Hero Metric Card base) */
+.premium-card {
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  transition: all 0.3s ease;
+  box-shadow: var(--shadow-card);
+}
+
+.premium-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: var(--glow-accent), var(--shadow-elevated);
+}
+
+/* SPEC: Glow Utility Classes */
+.glow-success {
+  box-shadow: var(--glow-success);
+}
+
+.glow-warning {
+  box-shadow: var(--glow-warning);
+}
+
+.glow-danger {
+  box-shadow: var(--glow-danger);
+}
+
+.glow-accent {
+  box-shadow: var(--glow-accent);
+}
+
+.accent-glow {
+  box-shadow: var(--glow);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.bg-app {
+  background: var(--bg);
+  color: var(--text);
+  position: relative;
+}
+
+/* Best Regards - Checkerboard Pattern */
+[data-client-theme="bestregard"] .bg-app::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--bg-pattern-opacity);
+  background-image: 
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 20px,
+      rgba(255, 255, 255, 0.03) 20px,
+      rgba(255, 255, 255, 0.03) 40px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 20px,
+      rgba(255, 255, 255, 0.03) 20px,
+      rgba(255, 255, 255, 0.03) 40px
+    );
+  z-index: 0;
+}
+
+[data-client-theme="bestregard"] .bg-app > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Fancy - Velvet/Onyx Gradient on Surfaces */
+[data-client-theme="fancy"] .surface {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0) 100%),
+              var(--surface);
+  border-color: var(--card-border);
+}
+
+/* Melrose - LED-like Glow on Active Elements */
+[data-client-theme="melrose"] .nav-active,
+[data-client-theme="melrose"] .primary-btn,
+[data-client-theme="melrose"] .kpi-accent {
+  box-shadow: var(--glow);
+}
+
+[data-client-theme="melrose"] .nav-active:hover,
+[data-client-theme="melrose"] .primary-btn:hover {
+  box-shadow: var(--glow), 0 0 20px rgba(206, 140, 113, 0.3);
+}
+
+/* Table row hover with primary color tint */
+[data-client-theme] tbody tr {
+  transition: background-color 0.2s ease;
+}
+
+[data-client-theme] tbody tr:hover {
+  background-color: rgba(var(--primary-rgb, 99, 102, 241), 0.1) !important;
+}
+
+/* Driver.js Premium Theme Overrides */
+.driver-popover {
+  background: var(--surface) !important;
+  border: 1px solid var(--card-border) !important;
+  border-radius: var(--radius) !important;
+  box-shadow: var(--shadow) !important;
+  color: var(--text) !important;
+  font-family: inherit !important;
+}
+
+.driver-popover-title {
+  color: var(--text) !important;
+  font-weight: 600 !important;
+  font-size: 1.125rem !important;
+  margin-bottom: 0.5rem !important;
+}
+
+.driver-popover-description {
+  color: var(--muted) !important;
+  font-size: 0.875rem !important;
+  line-height: 1.5 !important;
+}
+
+.driver-popover-footer {
+  margin-top: 1rem !important;
+  display: flex !important;
+  gap: 0.5rem !important;
+  justify-content: flex-end !important;
+}
+
+.driver-popover-btn {
+  background: var(--primary) !important;
+  color: var(--text) !important;
+  border: none !important;
+  border-radius: calc(var(--radius) * 0.75) !important;
+  padding: 0.5rem 1rem !important;
+  font-size: 0.875rem !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.driver-popover-btn:hover {
+  opacity: 0.9 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+.driver-popover-btn.driver-popover-btn-secondary {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--card-border) !important;
+}
+
+.driver-popover-btn.driver-popover-btn-secondary:hover {
+  background: rgba(var(--primary-rgb, 99, 102, 241), 0.1) !important;
+}
+
+.driver-popover-close-btn {
+  color: var(--muted) !important;
+  opacity: 0.7 !important;
+}
+
+.driver-popover-close-btn:hover {
+  opacity: 1 !important;
+  color: var(--text) !important;
+}
+
+.driver-popover-progress-text {
+  color: var(--muted) !important;
+  font-size: 0.75rem !important;
+}
+
+.driver-popover-arrow {
+  border-color: var(--surface) !important;
+}
+
+.driver-popover-arrow-side-left {
+  border-right-color: var(--card-border) !important;
+}
+
+.driver-popover-arrow-side-right {
+  border-left-color: var(--card-border) !important;
+}
+
+.driver-popover-arrow-side-top {
+  border-bottom-color: var(--card-border) !important;
+}
+
+.driver-popover-arrow-side-bottom {
+  border-top-color: var(--card-border) !important;
+}
+
+/* Overlay */
+.driver-overlay {
+  background: rgba(0, 0, 0, 0.5) !important;
+}
+
+/* React Flow minimal styles (v1.0.3 doesn't include CSS) */
+.react-flow__node {
+  cursor: pointer;
+}
+
+.react-flow__edge {
+  cursor: pointer;
+}
+
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-secondary);
+}
+
+.react-flow__controls {
+  background: var(--bg-secondary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+}
+
+.react-flow__controls-button {
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--card-border);
+  color: var(--text-primary);
+}
+
+.react-flow__controls-button:hover {
+  background: var(--bg-hover);
+}
+
+.react-flow__minimap {
+  background: var(--bg-secondary);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-md);
+}
