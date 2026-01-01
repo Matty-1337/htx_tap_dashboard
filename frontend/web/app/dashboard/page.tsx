@@ -23,6 +23,7 @@ interface AnalysisData {
   generatedAt?: string
   kpis?: Record<string, number>
   charts?: {
+    hour_of_day?: Array<any>
     hourly_revenue?: Array<any>
     day_of_week?: Array<any>
   }
