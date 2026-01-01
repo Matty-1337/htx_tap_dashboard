@@ -461,8 +461,8 @@ def _compute_hourly_revenue(df: pd.DataFrame, schema: Dict[str, Optional[str]]) 
     try:
         df_copy = df.copy()
         
-        # Normalize types safely
-        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        # Normalize types safely - parse as UTC first (matching date_filter behavior)
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce', utc=True)
         df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
         
         # Drop rows where Order Date is NaT
@@ -472,7 +472,16 @@ def _compute_hourly_revenue(df: pd.DataFrame, schema: Dict[str, Optional[str]]) 
             logger.warning(f"Hourly revenue chart: All dates invalid in 'Order Date'")
             return []
         
-        # Extract hour: pd.to_datetime(df["Order Date"]).dt.hour
+        # TIMEZONE FIX: Convert UTC to local timezone (US Eastern by default)
+        local_tz = 'America/New_York'  # Could be made configurable per client
+        if df_copy[order_date_col].dt.tz is not None:
+            # Convert from UTC to local timezone
+            df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
+            logger.info(f"Hourly revenue: Converted UTC timestamps to {local_tz} timezone")
+        else:
+            logger.info("Hourly revenue: Datetime is timezone-naive, assuming local time")
+        
+        # Extract hour from LOCAL timezone (not UTC)
         df_copy['Hour'] = df_copy[order_date_col].dt.hour
         
         logger.info(f"Hourly revenue chart: Extracted hour from 'Order Date' ({len(df_copy)} valid rows)")
@@ -541,8 +550,8 @@ def _compute_day_of_week(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> 
     try:
         df_copy = df.copy()
         
-        # Normalize types safely
-        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        # Normalize types safely - parse as UTC first (matching date_filter behavior)
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce', utc=True)
         df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
         
         # Drop rows where Order Date is NaT
@@ -552,9 +561,18 @@ def _compute_day_of_week(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> 
             logger.warning(f"Day of week chart: All dates invalid in 'Order Date'")
             return []
         
+        # TIMEZONE FIX: Convert UTC to local timezone (US Eastern by default)
+        local_tz = 'America/New_York'  # Could be made configurable per client
+        if df_copy[order_date_col].dt.tz is not None:
+            # Convert from UTC to local timezone
+            df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
+            logger.info(f"Day of week: Converted UTC timestamps to {local_tz} timezone")
+        else:
+            logger.info("Day of week: Datetime is timezone-naive, assuming local time")
+        
         logger.info(f"Day of week chart: Parsed 'Order Date' ({len(df_copy)} valid rows)")
         
-        # Extract day name (Monday..Sunday)
+        # Extract day name (Monday..Sunday) from LOCAL timezone
         df_copy['Day'] = df_copy[order_date_col].dt.day_name()
         
         # Force ordering Monday..Sunday (categorical order)
@@ -625,8 +643,8 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
     try:
         df_copy = df.copy()
         
-        # Normalize types safely
-        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        # Normalize types safely - parse as UTC first (matching date_filter behavior)
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce', utc=True)
         df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
         
         # EXCLUDE VOIDS: Filter out rows where void flag is True
@@ -648,7 +666,19 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
             logger.warning(f"Revenue heatmap: All dates invalid in 'Order Date' or all rows were voids")
             return []
         
-        # Extract hour
+        # TIMEZONE FIX: Convert UTC to local timezone (US Eastern by default, configurable)
+        # Most US restaurants operate in Eastern or Pacific time
+        # Default to Eastern, but this could be made client-specific
+        local_tz = 'America/New_York'  # Could be made configurable per client
+        if df_copy[order_date_col].dt.tz is not None:
+            # Convert from UTC to local timezone
+            df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
+            logger.info(f"Revenue heatmap: Converted UTC timestamps to {local_tz} timezone")
+        else:
+            # If timezone-naive, assume it's already in local time
+            logger.info("Revenue heatmap: Datetime is timezone-naive, assuming local time")
+        
+        # Extract hour from LOCAL timezone (not UTC)
         df_copy['hour'] = df_copy[order_date_col].dt.hour
         
         # BUSINESS RULE: Hours 0 (12AM), 1 (1AM), 2 (2AM) count as previous day
@@ -727,8 +757,8 @@ def _compute_golden_hours(df: pd.DataFrame, schema: Dict[str, Optional[str]]) ->
     try:
         df_copy = df.copy()
         
-        # Normalize types safely
-        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        # Normalize types safely - parse as UTC first (matching date_filter behavior)
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce', utc=True)
         df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
         
         # Drop rows where Order Date is NaT
@@ -737,7 +767,16 @@ def _compute_golden_hours(df: pd.DataFrame, schema: Dict[str, Optional[str]]) ->
         if df_copy.empty:
             return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
         
-        # Extract hour
+        # TIMEZONE FIX: Convert UTC to local timezone (US Eastern by default)
+        local_tz = 'America/New_York'  # Could be made configurable per client
+        if df_copy[order_date_col].dt.tz is not None:
+            # Convert from UTC to local timezone
+            df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
+            logger.info(f"Golden hours: Converted UTC timestamps to {local_tz} timezone")
+        else:
+            logger.info("Golden hours: Datetime is timezone-naive, assuming local time")
+        
+        # Extract hour from LOCAL timezone (not UTC)
         df_copy['hour'] = df_copy[order_date_col].dt.hour
         
         # BUSINESS RULE: Hours 0 (12AM), 1 (1AM) count as previous day for attribution
