@@ -23,7 +23,6 @@ interface AnalysisData {
   generatedAt?: string
   kpis?: Record<string, number>
   charts?: {
-    hour_of_day?: Array<any>
     hourly_revenue?: Array<any>
     day_of_week?: Array<any>
   }
@@ -318,14 +317,14 @@ export default function DashboardPage() {
   })
 
   // Format hourly revenue for heatmap
-  // Step 5: Try hour_of_day first (Order Date attribution), then hourly_revenue (legacy), then day_of_week
-  const hourlyRevenueData = data?.charts?.hour_of_day || data?.charts?.hourly_revenue || []
+  // Try hourly_revenue first, then day_of_week, then generate from data
+  const hourlyRevenueData = data?.charts?.hourly_revenue || []
   const dayOfWeekData = data?.charts?.day_of_week || []
   
   let heatmapData: Array<{ hour: number; day: string; revenue: number }> = []
   
   if (hourlyRevenueData.length > 0) {
-    // Use hour_of_day or hourly_revenue if available (Step 5: keys are Hour, Net Price, Order Id)
+    // Use hourly_revenue if available
     heatmapData = hourlyRevenueData.map((item: any) => {
       const hour = item.Hour || item.hour || 0
       const day = item.Day || item.day || 'Mon'
@@ -484,7 +483,7 @@ export default function DashboardPage() {
               title="Revenue"
               value={revenue}
               trend={{ value: revenueTrend, period: 'vs last period' }}
-              sparkline={generateSparkline(revenue, data?.charts?.hour_of_day || data?.charts?.hourly_revenue)}
+              sparkline={generateSparkline(revenue, data?.charts?.hourly_revenue)}
               onClick={() => router.push('/time')}
               delay={0}
             />

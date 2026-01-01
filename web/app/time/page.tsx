@@ -16,9 +16,8 @@ interface AnalysisData {
   clientId?: string
   generatedAt?: string
   charts?: {
-    hour_of_day?: Array<any>
-    hourly_revenue?: Array<any>  // Legacy
-    day_of_week?: Array<any>
+    hourly_revenue?: Array<{ hour?: number; revenue?: number }>
+    day_of_week?: Array<{ day?: string; revenue?: number }>
   }
   tables?: {
     [key: string]: any
@@ -92,23 +91,9 @@ export default function TimePage() {
     console.log('Run analysis')
   }
 
-  // Get chart data (Step 5: Use hour_of_day with Order Date attribution)
-  // Backend produces: hour_of_day with keys { Hour, Net Price, Order Id }
-  const hourlyRevenueRaw = data?.charts?.hour_of_day || data?.charts?.hourly_revenue || []
-  const dayOfWeekRaw = data?.charts?.day_of_week || []
-  
-  // Map backend keys (Hour, Net Price, Order Id) to frontend expected keys (hour, revenue)
-  const hourlyRevenue = hourlyRevenueRaw.map(item => ({
-    hour: item.Hour ?? item.hour ?? 0,
-    revenue: item['Net Price'] ?? item.revenue ?? 0,
-    orderId: item['Order Id'] ?? item.orderId ?? 0
-  }))
-  
-  const dayOfWeek = dayOfWeekRaw.map(item => ({
-    day: item.Day ?? item.day ?? 'Unknown',
-    revenue: item['Net Price'] ?? item.revenue ?? 0,
-    orderId: item['Order Id'] ?? item.orderId ?? 0
-  }))
+  // Get chart data
+  const hourlyRevenue = data?.charts?.hourly_revenue || []
+  const dayOfWeek = data?.charts?.day_of_week || []
 
   // Calculate hero metrics
   const peakHour = useMemo(() => {
@@ -338,7 +323,7 @@ export default function TimePage() {
                 />
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={hourlyRevenue}>
+                  <BarChart data={hourlyRevenue.map(item => ({ hour: item.hour || 0, revenue: item.revenue || 0 }))}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis
                       dataKey="hour"
@@ -351,11 +336,7 @@ export default function TimePage() {
                       style={{ fontSize: '12px', fill: 'var(--text-secondary)' }}
                     />
                     <Tooltip
-                      formatter={(value: number, name: string) => {
-                        if (name === 'revenue') return `$${value.toLocaleString()}`
-                        if (name === 'orderId') return `${value} orders`
-                        return value
-                      }}
+                      formatter={(value: number) => `$${value.toLocaleString()}`}
                       labelFormatter={(label) => `Hour: ${formatHour(label)}`}
                       contentStyle={{
                         backgroundColor: 'var(--bg-tertiary)',
@@ -380,7 +361,7 @@ export default function TimePage() {
                 />
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={dayOfWeek}>
+                  <BarChart data={dayOfWeek.map(item => ({ day: item.day || 'Unknown', revenue: item.revenue || 0 }))}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis
                       dataKey="day"
@@ -392,11 +373,7 @@ export default function TimePage() {
                       style={{ fontSize: '12px', fill: 'var(--text-secondary)' }}
                     />
                     <Tooltip
-                      formatter={(value: number, name: string) => {
-                        if (name === 'revenue') return `$${value.toLocaleString()}`
-                        if (name === 'orderId') return `${value} orders`
-                        return value
-                      }}
+                      formatter={(value: number) => `$${value.toLocaleString()}`}
                       contentStyle={{
                         backgroundColor: 'var(--bg-tertiary)',
                         border: '1px solid var(--card-border)',

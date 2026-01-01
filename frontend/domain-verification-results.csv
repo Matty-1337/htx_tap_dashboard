@@ -1,5 +1,0 @@
-"Domain","DNSResolves","TLSValid","HTTPStatus","ObservedPage","Verdict"
-"admin.htxtap.com","YES","UNKNOWN","UNKNOWN","Expected content found","PASS"
-"melrose.htxtap.com","YES","UNKNOWN","UNKNOWN","Expected content found","PASS"
-"fancy.htxtap.com","YES","UNKNOWN","UNKNOWN","Expected content found","PASS"
-"bestregard.htxtap.com","YES","UNKNOWN","UNKNOWN","Expected content found","PASS"

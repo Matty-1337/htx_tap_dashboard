@@ -22,3 +22,6 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Duplicate folder (removed - do not track)
+frontend/
