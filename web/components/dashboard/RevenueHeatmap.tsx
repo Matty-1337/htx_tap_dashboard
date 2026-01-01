@@ -23,7 +23,8 @@ const getColorForValue = (value: number, maxValue: number): string => {
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const HOURS = Array.from({ length: 24 }, (_, i) => i)
+// Heatmap starts at 3AM (hours 0-2 are attributed to previous day per business rules)
+const HOURS = Array.from({ length: 21 }, (_, i) => i + 3)  // [3, 4, 5, ..., 23]
 
 export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) {
   const [hoveredCell, setHoveredCell] = useState<{ hour: number; day: string } | null>(null)

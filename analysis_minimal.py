@@ -619,20 +619,33 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
             logger.warning(f"Revenue heatmap: All dates invalid in 'Order Date'")
             return []
         
-        # Extract hour and day of week
+        # Extract hour
         df_copy['hour'] = df_copy[order_date_col].dt.hour
-        df_copy['day_num'] = df_copy[order_date_col].dt.dayofweek  # 0=Monday, 6=Sunday
+        
+        # BUSINESS RULE: Hours 0 (12AM), 1 (1AM), 2 (2AM) count as previous day
+        # Bars operate 4PM-5AM, so early morning hours are part of previous day's sales
+        # Create adjusted date: subtract 1 day for hours 0, 1, 2
+        df_copy['adjusted_date'] = df_copy[order_date_col].copy()
+        early_morning_mask = df_copy['hour'].isin([0, 1, 2])
+        df_copy.loc[early_morning_mask, 'adjusted_date'] = df_copy.loc[early_morning_mask, order_date_col] - pd.Timedelta(days=1)
+        
+        # Extract day of week from ADJUSTED date (for hours 0-2, this is previous day)
+        df_copy['day_num'] = df_copy['adjusted_date'].dt.dayofweek  # 0=Monday, 6=Sunday
         df_copy['day'] = df_copy['day_num'].map(lambda x: DAY_NAMES[x] if 0 <= x <= 6 else 'Mon')
         
-        logger.info(f"Revenue heatmap: Extracted hour and day from 'Order Date' ({len(df_copy)} valid rows)")
+        # Filter: Only include hours 3-23 (heatmap starts at 3AM)
+        # Hours 0, 1, 2 are excluded from display (they're already attributed to previous day)
+        df_copy = df_copy[df_copy['hour'].between(3, 23)]
+        
+        logger.info(f"Revenue heatmap: Extracted hour and day from 'Order Date' with day shift for 12AM-2AM ({len(df_copy)} valid rows after filtering to 3AM-11PM)")
         
         # Aggregate by hour AND day: sum Net Price
         hourly_daily = df_copy.groupby(['hour', 'day'], as_index=False).agg({amount_col: 'sum'})
         hourly_daily.columns = ['hour', 'day', 'revenue']
         
-        # Create full 24×7 grid (all hour-day combinations)
+        # Create grid for hours 3-23 only (21 hours × 7 days = 147 cells)
         from itertools import product
-        all_combinations = list(product(range(24), DAY_NAMES))
+        all_combinations = list(product(range(3, 24), DAY_NAMES))  # Hours 3-23 only
         all_grid = pd.DataFrame(all_combinations, columns=['hour', 'day'])
         
         # Merge with actual data, fill missing with 0
@@ -651,7 +664,7 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
         # Convert to list of dicts
         result = heatmap.to_dict('records')
         
-        logger.info(f"Revenue heatmap: Generated {len(result)} cells (24 hours × 7 days)")
+        logger.info(f"Revenue heatmap: Generated {len(result)} cells (21 hours × 7 days, starting at 3AM, with 12AM-2AM shifted to previous day)")
         return result
         
     except Exception as e:
