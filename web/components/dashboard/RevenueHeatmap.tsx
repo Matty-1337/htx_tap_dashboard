@@ -11,15 +11,17 @@ interface RevenueHeatmapProps {
 }
 
 // Color scale: #1e1b4b → #312e81 → #4f46e5 → #6366f1 → #22d3ee
+// Lower thresholds to make more cells visible (map "lights up" better)
 const getColorForValue = (value: number, maxValue: number): string => {
   if (maxValue === 0) return '#1e1b4b'
   const ratio = value / maxValue
   
-  if (ratio < 0.2) return '#1e1b4b'
-  if (ratio < 0.4) return '#312e81'
-  if (ratio < 0.6) return '#4f46e5'
-  if (ratio < 0.8) return '#6366f1'
-  return '#22d3ee'
+  // Lower thresholds: 5%, 15%, 30%, 50% (instead of 20%, 40%, 60%, 80%)
+  if (ratio < 0.05) return '#1e1b4b'  // Very low: dark blue
+  if (ratio < 0.15) return '#312e81'   // Low: medium dark blue
+  if (ratio < 0.30) return '#4f46e5'   // Medium: indigo
+  if (ratio < 0.50) return '#6366f1'   // High: light indigo
+  return '#22d3ee'                     // Very high: cyan
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']

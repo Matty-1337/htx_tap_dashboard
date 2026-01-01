@@ -612,11 +612,23 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
         df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
         df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
         
+        # EXCLUDE VOIDS: Filter out rows where void flag is True
+        void_flag_col = schema.get("void_flag")
+        if void_flag_col and void_flag_col in df_copy.columns:
+            # Convert void flag to boolean, treat missing/NaN as False (not void)
+            df_copy[void_flag_col] = df_copy[void_flag_col].astype(str).str.lower().isin(['true', '1', 'yes', 'y'])
+            void_count_before = len(df_copy)
+            df_copy = df_copy[~df_copy[void_flag_col]]
+            void_count_after = len(df_copy)
+            logger.info(f"Revenue heatmap: Excluded {void_count_before - void_count_after} void rows")
+        else:
+            logger.info("Revenue heatmap: No void flag column found, including all rows")
+        
         # Drop rows where Order Date is NaT
         df_copy = df_copy.dropna(subset=[order_date_col])
         
         if df_copy.empty:
-            logger.warning(f"Revenue heatmap: All dates invalid in 'Order Date'")
+            logger.warning(f"Revenue heatmap: All dates invalid in 'Order Date' or all rows were voids")
             return []
         
         # Extract hour
