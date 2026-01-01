@@ -364,12 +364,36 @@ async def run_handler(request: RunRequest):
         # ============================================================
         # DATA LOADING SECTION
         # ============================================================
+        # Extract dateRange from params to pass to file selection (for month filtering)
+        date_range_param = request.params.get('dateRange', {})
+        
+        # If preset is provided, convert to estimated start/end for month filtering
+        # (We use today's date as a conservative estimate - actual filtering happens later)
+        preset = date_range_param.get('preset')
+        if preset and not (date_range_param.get('start') and date_range_param.get('end')):
+            from analysis_minimal import compute_preset_window
+            from datetime import datetime
+            # Use today's date as a conservative estimate for month filtering
+            # This allows us to select relevant month files, actual filtering happens in analysis
+            today = pd.Timestamp.now(tz='UTC')
+            try:
+                est_start, est_end = compute_preset_window(preset, today)
+                logger.info(f"Converted preset '{preset}' to estimated dateRange for file selection: {est_start} to {est_end}")
+                date_range_param = {'start': est_start, 'end': est_end}
+            except Exception as e:
+                logger.warning(f"Could not convert preset '{preset}' to dateRange for file selection: {e}. Loading all files.")
+                date_range_param = {}
+        
         # Load client data from Supabase Storage
-        raw_df, load_metadata = load_client_dataframe(request.clientId)
+        # Pass dateRange to filter files by month intersection
+        raw_df, load_metadata = load_client_dataframe(request.clientId, date_range=date_range_param if date_range_param.get('start') and date_range_param.get('end') else None)
         
         # Log safe metadata (no secrets, no raw data)
         logger.info(f"Data loaded for client: {load_metadata['clientId']}")
-        logger.info(f"Selected file: {load_metadata['path']}")
+        if 'paths' in load_metadata and isinstance(load_metadata['paths'], list):
+            logger.info(f"Selected files: {load_metadata['paths']}")
+        else:
+            logger.info(f"Selected file: {load_metadata.get('path', 'unknown')}")
         logger.info(f"File format: {load_metadata['format']}")
         logger.info(f"DataFrame shape: {load_metadata['rows']} rows, {load_metadata['cols']} columns")
         logger.info(f"Column names: {load_metadata['column_names']}")

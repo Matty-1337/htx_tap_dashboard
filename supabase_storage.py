@@ -795,7 +795,8 @@ def is_raw_transaction_file(bucket: str, file_dict: Dict[str, Any]) -> bool:
     # Filename-based DENY list (derived/analysis files)
     deny_patterns = [
         "menu_volatility", "waste_efficiency", "hourly_analysis", "dow_analysis",
-        "attachment", "analysis", "summary", "report"
+        "attachment", "analysis", "summary", "report",
+        "bottle_conversion", "discount_analysis"
     ]
     if any(pattern in name for pattern in deny_patterns):
         logger.debug(f"[FILTER] Denied '{exact_key}' by filename pattern (contains: {[p for p in deny_patterns if p in name]})")
@@ -820,32 +821,116 @@ def is_raw_transaction_file(bucket: str, file_dict: Dict[str, Any]) -> bool:
     return False
 
 
-def filter_raw_input_files(bucket: str, files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def get_months_for_daterange(start_iso: Optional[str], end_iso: Optional[str]) -> set:
+    """
+    Determine which calendar months (1-12) intersect with the given date range.
+    
+    Args:
+        start_iso: Start date ISO string (inclusive)
+        end_iso: End date ISO string (exclusive)
+    
+    Returns:
+        Set of month numbers (1-12) that intersect the range, or empty set if no range provided
+    """
+    if not start_iso or not end_iso:
+        return set()
+    
+    try:
+        start_dt = pd.to_datetime(start_iso, utc=True)
+        end_dt = pd.to_datetime(end_iso, utc=True)
+        
+        months = set()
+        current = start_dt.replace(day=1)  # Start of month
+        
+        while current < end_dt:
+            months.add(current.month)
+            # Move to next month
+            if current.month == 12:
+                current = current.replace(year=current.year + 1, month=1)
+            else:
+                current = current.replace(month=current.month + 1)
+        
+        return months
+    except Exception as e:
+        logger.warning(f"Error parsing date range for month selection: {e}")
+        return set()
+
+
+def filename_matches_month(file_name: str, months: set) -> bool:
+    """
+    Check if a filename contains a month name that matches any month in the set.
+    
+    Args:
+        file_name: Filename to check (case-insensitive)
+        months: Set of month numbers (1-12)
+    
+    Returns:
+        True if filename contains a matching month name
+    """
+    if not months:
+        return True  # No month filter - include all
+    
+    month_names = {
+        1: "january", 2: "february", 3: "march", 4: "april", 5: "may", 6: "june",
+        7: "july", 8: "august", 9: "september", 10: "october", 11: "november", 12: "december"
+    }
+    
+    file_lower = file_name.lower()
+    matching_months = [month_names[m] for m in months if month_names[m] in file_lower]
+    
+    return len(matching_months) > 0
+
+
+def filter_raw_input_files(bucket: str, files: List[Dict[str, Any]], date_range: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """
     Filter files to only include raw transaction files.
+    If date_range is provided, further filter to only include month files that intersect the range.
     
     Args:
         bucket: Storage bucket name
         files: List of file dictionaries
+        date_range: Optional dict with 'start' and 'end' ISO date strings
     
     Returns:
-        Filtered list of raw transaction files
+        Filtered list of raw transaction files (month-filtered if date_range provided)
     """
     raw_files = []
     excluded_files = []
     
+    # First pass: filter to raw transaction files
     for file in files:
         if is_raw_transaction_file(bucket, file):
             raw_files.append(file)
         else:
             excluded_files.append(file.get("name") or file.get("key") or "unknown")
     
-    logger.info(f"[FILTER] Selected {len(raw_files)} raw files, excluded {len(excluded_files)} derived/analysis files")
+    logger.info(f"[FILTER] Selected {len(raw_files)} raw files (before month filtering), excluded {len(excluded_files)} derived/analysis files")
+    
+    # Second pass: if date_range provided, filter by month intersection
+    if date_range:
+        start_iso = date_range.get('start')
+        end_iso = date_range.get('end')
+        target_months = get_months_for_daterange(start_iso, end_iso)
+        
+        if target_months:
+            month_filtered = []
+            for file in raw_files:
+                file_name = file.get("name") or file.get("key") or ""
+                if filename_matches_month(file_name, target_months):
+                    month_filtered.append(file)
+                else:
+                    logger.debug(f"[FILTER] Excluded '{file_name}' (does not match months {target_months})")
+            
+            logger.info(f"[FILTER] Month filter: {len(month_filtered)} files match dateRange months {sorted(target_months)} (from {len(raw_files)} raw files)")
+            raw_files = month_filtered
+        else:
+            logger.info(f"[FILTER] No month filtering applied (invalid or missing dateRange)")
+    
     if excluded_files:
         logger.info(f"[FILTER] Excluded files: {excluded_files[:10]}{'...' if len(excluded_files) > 10 else ''}")
     if raw_files:
         selected_names = [f.get("name") or f.get("key") or "unknown" for f in raw_files]
-        logger.info(f"[FILTER] Selected raw files: {selected_names}")
+        logger.info(f"[FILTER] Selected raw files for loading: {selected_names}")
     
     return raw_files
 
@@ -890,14 +975,16 @@ def load_dataframe_from_bytes(path: str, file_bytes: bytes) -> pd.DataFrame:
         )
 
 
-def load_client_dataframe(client_id: str) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+def load_client_dataframe(client_id: str, date_range: Optional[Dict[str, Any]] = None) -> Tuple[pd.DataFrame, Dict[str, Any]]:
     """
     Load the client's raw transaction data files from Supabase Storage into a pandas DataFrame.
     Only selects raw order-level exports (excludes derived analysis files).
+    If date_range is provided, only loads month files that intersect the requested range.
     Concatenates multiple raw files if present.
     
     Args:
         client_id: Client identifier (e.g., "melrose", "fancy", "bestregard")
+        date_range: Optional dict with 'start' and 'end' ISO date strings for month filtering
     
     Returns:
         Tuple of (DataFrame, metadata_dict)
@@ -912,7 +999,10 @@ def load_client_dataframe(client_id: str) -> Tuple[pd.DataFrame, Dict[str, Any]]
     client_id = client_id.lower()
     prefix = f"{client_id}/"
     
-    logger.info(f"Loading data for client: {client_id}, bucket: {SUPABASE_BUCKET}")
+    if date_range:
+        logger.info(f"Loading data for client: {client_id}, bucket: {SUPABASE_BUCKET}, dateRange: {date_range.get('start')} to {date_range.get('end')}")
+    else:
+        logger.info(f"Loading data for client: {client_id}, bucket: {SUPABASE_BUCKET}")
     
     # List files using case-insensitive matching (returns exact keys)
     files = list_files_case_insensitive(SUPABASE_BUCKET, client_id)
@@ -926,7 +1016,8 @@ def load_client_dataframe(client_id: str) -> Tuple[pd.DataFrame, Dict[str, Any]]
         )
     
     # Filter to only raw transaction files (exclude derived/analysis files)
-    raw_files = filter_raw_input_files(SUPABASE_BUCKET, files)
+    # Also apply month filtering if date_range is provided
+    raw_files = filter_raw_input_files(SUPABASE_BUCKET, files, date_range=date_range)
     
     if not raw_files:
         error_detail = f"No raw transaction files found for client: {client_id}. Found {len(files)} files but none matched raw transaction criteria."

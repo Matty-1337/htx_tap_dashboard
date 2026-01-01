@@ -80,8 +80,10 @@ def get_data_coverage(df: pd.DataFrame, date_col: Optional[str] = None) -> Dict[
     # Capture column sample (first 30 columns, safe for debugging)
     columns_sample = list(df.columns)[:30]
     
-    # Find date column if not provided - try multiple detection methods
+    # Find date column if not provided - prioritize schema, then fall back to detection
     if not date_col:
+        # Note: get_data_coverage doesn't have schema context, so we detect from scratch
+        # In practice, date_col should be passed from run_full_analysis
         date_col = find_date_column(df)
         if not date_col:
             date_col = find_datetime_col(df)
@@ -175,15 +177,17 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     columns_sample = list(df.columns)[:30]
     logger.info(f"DataFrame columns sample ({len(columns_sample)} of {len(df.columns)} total): {columns_sample}")
     
-    # Find datetime column first (needed for preset computation and filtering)
-    # Try multiple detection methods in order
-    date_col = find_date_column(df)
+    # Find datetime column - prioritize schema-provided column, then fall back to detection
+    schema_datetime = schema.get("datetime")
+    
+    # Use schema datetime if available, otherwise detect
+    date_col = find_date_column(df, schema_datetime_col=schema_datetime)
     if not date_col:
         date_col = find_datetime_col(df)
     
     # Log detection result
     if date_col:
-        logger.info(f"Date column detected: '{date_col}'")
+        logger.info(f"Date column for filtering: '{date_col}' (from schema: {schema_datetime == date_col})")
     else:
         logger.warning(
             f"No date column detected. Searched for aliases including: "
@@ -196,6 +200,10 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     if date_col and not schema.get("datetime"):
         schema["datetime"] = date_col
         logger.info(f"Updated schema datetime to detected column: '{date_col}'")
+    elif date_col and schema.get("datetime") != date_col:
+        # Schema had a different column - update it
+        schema["datetime"] = date_col
+        logger.info(f"Updated schema datetime from '{schema_datetime}' to '{date_col}'")
     
     # Compute data coverage from original dataset (before filtering)
     data_coverage = get_data_coverage(df, date_col)
