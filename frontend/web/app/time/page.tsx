@@ -16,9 +16,9 @@ interface AnalysisData {
   clientId?: string
   generatedAt?: string
   charts?: {
-    hour_of_day?: Array<{ Hour?: number; 'Net Price'?: number; 'Order Id'?: number }>
-    hourly_revenue?: Array<{ Hour?: number; 'Net Price'?: number; 'Order Id'?: number }>  // Legacy
-    day_of_week?: Array<{ Day?: string; 'Net Price'?: number; 'Order Id'?: number }>
+    hour_of_day?: Array<any>
+    hourly_revenue?: Array<any>  // Legacy
+    day_of_week?: Array<any>
   }
   tables?: {
     [key: string]: any
