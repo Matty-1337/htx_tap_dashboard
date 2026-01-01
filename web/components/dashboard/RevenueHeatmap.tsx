@@ -25,8 +25,8 @@ const getColorForValue = (value: number, maxValue: number): string => {
 }
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-// Heatmap starts at 3AM (hours 0-2 are attributed to previous day per business rules)
-const HOURS = Array.from({ length: 21 }, (_, i) => i + 3)  // [3, 4, 5, ..., 23]
+// Heatmap displays 4PM-1AM plus 2AM row (11 hours: 16-23, 0-2)
+const HOURS = [16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2]  // 4PM-11PM, 12AM-1AM, 2AM
 
 export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) {
   const [hoveredCell, setHoveredCell] = useState<{ hour: number; day: string } | null>(null)
@@ -80,6 +80,16 @@ export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) 
     return `${hour - 12}PM`
   }
 
+  const formatRevenue = (revenue: number): string => {
+    if (revenue === 0) return ''
+    if (revenue >= 1000) {
+      const thousands = revenue / 1000
+      // Show one decimal place if < 10K, otherwise round to whole number
+      return thousands < 10 ? `$${thousands.toFixed(1)}K` : `$${Math.round(thousands)}K`
+    }
+    return `$${Math.round(revenue)}`
+  }
+
   const isGoldenCell = (hour: number, day: string) => {
     return hour === goldenWindow.hour && day === goldenWindow.day
   }
@@ -88,8 +98,8 @@ export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) 
     <div className="premium-card p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-section-title mb-1">Revenue Heatmap</h3>
-          <p className="text-caption muted">Revenue concentration by hour and day</p>
+          <h3 className="text-section-title mb-1">Revenue Heatmap: Day × Hour</h3>
+          <p className="text-caption muted">Find your profit zones — darker green = more revenue</p>
         </div>
       </div>
 
@@ -125,10 +135,13 @@ export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) 
                     const isHovered = hoveredCell?.hour === hour && hoveredCell?.day === day
                     const percentage = totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0
 
+                    const revenueText = formatRevenue(revenue)
+                    const textColor = revenue === 0 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.95)'
+
                     return (
                       <motion.div
                         key={key}
-                        className="flex-1 mx-0.5 h-8 rounded cursor-pointer relative"
+                        className="flex-1 mx-0.5 h-8 rounded cursor-pointer relative flex items-center justify-center"
                         style={{
                           backgroundColor: color,
                           opacity: revenue === 0 ? 0.1 : 0.8,
@@ -145,8 +158,16 @@ export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) 
                         whileHover={{ scale: 1.1, zIndex: 10 }}
                         title={`${day} ${formatHour(hour)}: $${revenue.toLocaleString()} (${percentage.toFixed(1)}%)`}
                       >
+                        {revenueText && (
+                          <span 
+                            className="text-xs font-semibold"
+                            style={{ color: textColor, textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)' }}
+                          >
+                            {revenueText}
+                          </span>
+                        )}
                         {isGolden && (
-                          <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                             <Sparkles size={12} style={{ color: '#22d3ee' }} />
                           </div>
                         )}

@@ -472,8 +472,8 @@ def _compute_hourly_revenue(df: pd.DataFrame, schema: Dict[str, Optional[str]]) 
             logger.warning(f"Hourly revenue chart: All dates invalid in 'Order Date'")
             return []
         
-        # TIMEZONE FIX: Convert UTC to local timezone (US Eastern by default)
-        local_tz = 'America/New_York'  # Could be made configurable per client
+        # TIMEZONE FIX: Convert UTC to local timezone (Central Time)
+        local_tz = 'America/Chicago'  # Central Time Zone
         if df_copy[order_date_col].dt.tz is not None:
             # Convert from UTC to local timezone
             df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
@@ -561,8 +561,8 @@ def _compute_day_of_week(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> 
             logger.warning(f"Day of week chart: All dates invalid in 'Order Date'")
             return []
         
-        # TIMEZONE FIX: Convert UTC to local timezone (US Eastern by default)
-        local_tz = 'America/New_York'  # Could be made configurable per client
+        # TIMEZONE FIX: Convert UTC to local timezone (Central Time)
+        local_tz = 'America/Chicago'  # Central Time Zone
         if df_copy[order_date_col].dt.tz is not None:
             # Convert from UTC to local timezone
             df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
@@ -666,10 +666,8 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
             logger.warning(f"Revenue heatmap: All dates invalid in 'Order Date' or all rows were voids")
             return []
         
-        # TIMEZONE FIX: Convert UTC to local timezone (US Eastern by default, configurable)
-        # Most US restaurants operate in Eastern or Pacific time
-        # Default to Eastern, but this could be made client-specific
-        local_tz = 'America/New_York'  # Could be made configurable per client
+        # TIMEZONE FIX: Convert UTC to local timezone (Central Time)
+        local_tz = 'America/Chicago'  # Central Time Zone
         if df_copy[order_date_col].dt.tz is not None:
             # Convert from UTC to local timezone
             df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
@@ -681,30 +679,31 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
         # Extract hour from LOCAL timezone (not UTC)
         df_copy['hour'] = df_copy[order_date_col].dt.hour
         
-        # BUSINESS RULE: Hours 0 (12AM), 1 (1AM), 2 (2AM) count as previous day
-        # Bars operate 4PM-5AM, so early morning hours are part of previous day's sales
-        # Create adjusted date: subtract 1 day for hours 0, 1, 2
+        # BUSINESS RULE: Hour 2 (2AM) counts as previous day, hours 0-1 (12AM-1AM) stay on current day
+        # Bars operate 4PM-2AM, so 2AM is part of previous day's sales, but 12AM-1AM are current day
+        # Create adjusted date: subtract 1 day only for hour 2
         df_copy['adjusted_date'] = df_copy[order_date_col].copy()
-        early_morning_mask = df_copy['hour'].isin([0, 1, 2])
-        df_copy.loc[early_morning_mask, 'adjusted_date'] = df_copy.loc[early_morning_mask, order_date_col] - pd.Timedelta(days=1)
+        hour_2_mask = df_copy['hour'] == 2
+        df_copy.loc[hour_2_mask, 'adjusted_date'] = df_copy.loc[hour_2_mask, order_date_col] - pd.Timedelta(days=1)
         
-        # Extract day of week from ADJUSTED date (for hours 0-2, this is previous day)
+        # Extract day of week from ADJUSTED date (for hour 2, this is previous day; for 0-1, current day)
         df_copy['day_num'] = df_copy['adjusted_date'].dt.dayofweek  # 0=Monday, 6=Sunday
         df_copy['day'] = df_copy['day_num'].map(lambda x: DAY_NAMES[x] if 0 <= x <= 6 else 'Mon')
         
-        # Filter: Only include hours 3-23 (heatmap starts at 3AM)
-        # Hours 0, 1, 2 are excluded from display (they're already attributed to previous day)
-        df_copy = df_copy[df_copy['hour'].between(3, 23)]
+        # Filter: Include hours 16-23 (4PM-11PM), 0-1 (12AM-1AM), and 2 (2AM for display, but data shifted)
+        # Display range: 4PM-1AM plus 2AM row (empty for current day, data on previous day)
+        display_hours = list(range(16, 24)) + [0, 1, 2]  # [16-23, 0, 1, 2]
+        df_copy = df_copy[df_copy['hour'].isin(display_hours)]
         
-        logger.info(f"Revenue heatmap: Extracted hour and day from 'Order Date' with day shift for 12AM-2AM ({len(df_copy)} valid rows after filtering to 3AM-11PM)")
+        logger.info(f"Revenue heatmap: Extracted hour and day from 'Order Date' with day shift for 2AM ({len(df_copy)} valid rows for hours 4PM-1AM+2AM)")
         
         # Aggregate by hour AND day: sum Net Price
         hourly_daily = df_copy.groupby(['hour', 'day'], as_index=False).agg({amount_col: 'sum'})
         hourly_daily.columns = ['hour', 'day', 'revenue']
         
-        # Create grid for hours 3-23 only (21 hours × 7 days = 147 cells)
+        # Create grid for display hours: 16-23, 0, 1, 2 (11 hours × 7 days = 77 cells)
         from itertools import product
-        all_combinations = list(product(range(3, 24), DAY_NAMES))  # Hours 3-23 only
+        all_combinations = list(product(display_hours, DAY_NAMES))
         all_grid = pd.DataFrame(all_combinations, columns=['hour', 'day'])
         
         # Merge with actual data, fill missing with 0
@@ -716,14 +715,17 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
         heatmap['revenue'] = heatmap['revenue'].astype(float)
         
         # Sort by hour then by day order
+        # Custom hour sort order: 16-23, then 0-2 (display order: 4PM-11PM, 12AM-2AM)
+        hour_order = {hour: i for i, hour in enumerate(display_hours)}
+        heatmap['hour_sort'] = heatmap['hour'].map(hour_order)
         day_order = {day: i for i, day in enumerate(DAY_NAMES)}
         heatmap['day_sort'] = heatmap['day'].map(day_order)
-        heatmap = heatmap.sort_values(['hour', 'day_sort']).drop('day_sort', axis=1)
+        heatmap = heatmap.sort_values(['hour_sort', 'day_sort']).drop(['hour_sort', 'day_sort'], axis=1)
         
         # Convert to list of dicts
         result = heatmap.to_dict('records')
         
-        logger.info(f"Revenue heatmap: Generated {len(result)} cells (21 hours × 7 days, starting at 3AM, with 12AM-2AM shifted to previous day)")
+        logger.info(f"Revenue heatmap: Generated {len(result)} cells (11 hours × 7 days = 77 cells: 4PM-11PM, 12AM-1AM, 2AM, with 2AM shifted to previous day)")
         return result
         
     except Exception as e:
@@ -767,8 +769,8 @@ def _compute_golden_hours(df: pd.DataFrame, schema: Dict[str, Optional[str]]) ->
         if df_copy.empty:
             return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
         
-        # TIMEZONE FIX: Convert UTC to local timezone (US Eastern by default)
-        local_tz = 'America/New_York'  # Could be made configurable per client
+        # TIMEZONE FIX: Convert UTC to local timezone (Central Time)
+        local_tz = 'America/Chicago'  # Central Time Zone
         if df_copy[order_date_col].dt.tz is not None:
             # Convert from UTC to local timezone
             df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
