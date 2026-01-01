@@ -206,6 +206,7 @@ def list_files_case_insensitive(bucket: str, client_id: str) -> List[Dict[str, A
     
     all_files = []
     seen_keys = set()
+    seen_names = set()  # Deduplicate by filename (case-insensitive) to handle case-variant prefixes
     
     is_dev = os.getenv("RAILWAY_ENVIRONMENT") is None and os.getenv("VERCEL") is None
     if is_dev:
@@ -220,6 +221,10 @@ def list_files_case_insensitive(bucket: str, client_id: str) -> List[Dict[str, A
             if not isinstance(response, list):
                 response = [response] if response else []
             
+            # If we already found files from a previous prefix, and Supabase list() is case-insensitive,
+            # we'll get duplicates. Use filename-based deduplication to prevent this.
+            prefix_found_files = False
+            
             for item in response:
                 if isinstance(item, dict):
                     # Get name from Supabase response (exact, no mutation)
@@ -227,12 +232,20 @@ def list_files_case_insensitive(bucket: str, client_id: str) -> List[Dict[str, A
                     if not name:
                         continue
                     
+                    # Deduplicate by filename (case-insensitive) to handle case-variant prefixes
+                    # Supabase list() API is case-insensitive, so Melrose/ and melrose/ return same files
+                    name_lower = name.lower()
+                    if name_lower in seen_names:
+                        continue  # Already seen this filename from a previous prefix
+                    
                     # Construct exact_key: prefix (exact from list) + name (exact from response)
                     # Preserve all characters including underscores, spaces, etc.
                     exact_key = f"{prefix.rstrip('/')}/{name}"
                     
                     if exact_key not in seen_keys:
                         seen_keys.add(exact_key)
+                        seen_names.add(name_lower)
+                        prefix_found_files = True
                         file_obj = {
                             "key": exact_key,  # EXACT key for download - DO NOT MUTATE (using "key" for consistency)
                             "exact_key": exact_key,  # Keep for backward compatibility
@@ -246,15 +259,27 @@ def list_files_case_insensitive(bucket: str, client_id: str) -> List[Dict[str, A
                         all_files.append(file_obj)
                 elif isinstance(item, str):
                     # String response - use as-is
+                    name_lower = item.lower()
+                    if name_lower in seen_names:
+                        continue  # Already seen this filename from a previous prefix
+                    
                     exact_key = f"{prefix.rstrip('/')}/{item}"
                     if exact_key not in seen_keys:
                         seen_keys.add(exact_key)
+                        seen_names.add(name_lower)
+                        prefix_found_files = True
                         all_files.append({
                             "key": exact_key,  # EXACT key for download - DO NOT MUTATE (using "key" for consistency)
                             "exact_key": exact_key,  # Keep for backward compatibility
                             "name": item,  # Original filename
                             "metadata": {}
                         })
+            
+            # If this prefix returned files, prefer it and don't try remaining prefixes
+            # (Supabase list() is case-insensitive, so other prefixes would return duplicates)
+            if prefix_found_files and len(all_files) > 0:
+                break
+                
         except Exception as e:
             if is_dev:
                 logger.warning(f"[LIST] Failed to list prefix '{prefix}': {e}")
