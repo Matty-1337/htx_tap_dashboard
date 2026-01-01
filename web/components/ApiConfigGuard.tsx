@@ -13,21 +13,22 @@ export function ApiConfigGuard({ children }: { children: React.ReactNode }) {
   const [showError, setShowError] = useState(false)
 
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL
+    // Strictly require NEXT_PUBLIC_API_BASE_URL - no hardcoded fallback
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? ""
     const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production'
     
-    setApiBaseUrl(base || null)
+    setApiBaseUrl(apiBaseUrl || null)
     
-    // In production, require the env var
-    if (isProduction && !base) {
+    // In production, require the env var - show error banner if missing
+    if (isProduction && !apiBaseUrl) {
       setShowError(true)
       console.error('[ApiConfigGuard] NEXT_PUBLIC_API_BASE_URL is missing in production!')
       console.error('[ApiConfigGuard] Set it in Vercel: Project → Settings → Environment Variables')
-    } else if (!base) {
+    } else if (!apiBaseUrl) {
       // In dev, warn but don't block
-      console.warn('[ApiConfigGuard] NEXT_PUBLIC_API_BASE_URL not set, using dev default (http://127.0.0.1:8000)')
+      console.warn('[ApiConfigGuard] NEXT_PUBLIC_API_BASE_URL not set (dev mode)')
     } else {
-      console.log(`[ApiConfigGuard] API Base URL: ${base}`)
+      console.log(`[ApiConfigGuard] API Base URL: ${apiBaseUrl}`)
     }
   }, [])
 
