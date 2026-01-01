@@ -75,17 +75,29 @@ export async function POST(request: NextRequest) {
     
     if (!base) {
       if (isProduction) {
+        console.error('[API /run] NEXT_PUBLIC_API_BASE_URL is missing in production!')
         return NextResponse.json(
-          { error: 'Backend configuration missing', details: 'NEXT_PUBLIC_API_BASE_URL or API_BASE_URL must be set in production' },
+          { 
+            error: 'Backend configuration missing', 
+            details: 'NEXT_PUBLIC_API_BASE_URL or API_BASE_URL must be set in production',
+            tip: 'Set NEXT_PUBLIC_API_BASE_URL in Vercel: Project → Settings → Environment Variables → Production',
+            expectedValue: 'https://htxtapdashboard-production.up.railway.app'
+          },
           { status: 500 }
         )
       }
       // Dev default
-      console.log('[API /run] Backend URL env var not set, using dev default: http://127.0.0.1:8000')
+      console.warn('[API /run] Backend URL env var not set, using dev default: http://127.0.0.1:8000')
+      console.warn('[API /run] To use production backend, set NEXT_PUBLIC_API_BASE_URL=https://htxtapdashboard-production.up.railway.app')
     }
     
     const apiBase = (base || 'http://127.0.0.1:8000').replace(/\/$/, '')
     const railwayUrl = `${apiBase}/run`
+    
+    // Log API base URL in dev for debugging (never log in production)
+    if (!isProduction) {
+      console.log(`[API /run] Using backend: ${apiBase}`)
+    }
     
       // Normalize clientId to lowercase (Railway expects: melrose, bestregard, fancy)
       const normalizedClientId = clientId.toLowerCase().trim()

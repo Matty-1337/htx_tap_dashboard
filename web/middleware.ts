@@ -28,7 +28,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // STEP 0: Bypass rewrite for shared routes that must never be rewritten
-  const BYPASS_PREFIXES = ['/dashboard', '/api', '/login', '/admin', '/_next']
+  // These routes exist at top-level (app/team/page.tsx, etc.) and should not be rewritten to /[client]/path
+  const BYPASS_PREFIXES = ['/dashboard', '/api', '/login', '/admin', '/_next', '/team', '/menu', '/waste', '/time', '/actions']
   const shouldBypass = 
     BYPASS_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/')) ||
     pathname === '/favicon.ico'
