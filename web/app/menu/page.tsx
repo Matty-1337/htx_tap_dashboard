@@ -66,8 +66,7 @@ export default function MenuPage() {
             params: {
               dateRange: {
                 preset: '30d',
-                start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-                end: new Date().toISOString(),
+                // Backend computes start/end from dataset max date when preset is provided
               },
             },
           }),

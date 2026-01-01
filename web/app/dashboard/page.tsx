@@ -32,6 +32,13 @@ interface AnalysisData {
     menu_volatility?: { data: any[]; columns?: string[] }
     [key: string]: any
   }
+  dataCoverage?: {
+    minDate?: string | null
+    maxDate?: string | null
+    dateCol?: string | null
+    rowCount?: number
+    columnsSample?: string[]
+  }
   executionTimeSeconds?: number
   [key: string]: any
 }
@@ -64,28 +71,25 @@ export default function DashboardPage() {
         return
       }
 
-      const dateRange: { preset: string; start?: string; end?: string } = {
-        preset: filters.datePreset || '30d',
+      // For presets, send preset-only (backend computes dates relative to dataset max date)
+      // For custom ranges (future), send start/end only
+      const dateRange: { preset?: string; start?: string; end?: string } = {}
+      
+      const selectedPreset = filters.datePreset || '30d'
+      
+      // If a preset is selected, send preset-only (no start/end)
+      if (selectedPreset) {
+        dateRange.preset = selectedPreset
+        // Explicitly omit start/end to let backend compute from dataset max date
       }
+      // TODO: If custom date range is implemented in UI, send start/end only (no preset)
       
-      const now = new Date()
-      const endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
-      
-      let startDate: Date
-      if (filters.datePreset === '7d') {
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      } else if (filters.datePreset === '30d') {
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-      } else if (filters.datePreset === '90d') {
-        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
-      } else if (filters.datePreset === 'mtd') {
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0)
-      } else {
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      // Defensive guard: warn in dev if both preset and start/end are accidentally included
+      if (process.env.NODE_ENV !== 'production' && dateRange.preset && (dateRange.start || dateRange.end)) {
+        console.warn(
+          '[Dashboard] dateRange has both preset and start/end. Backend will ignore start/end and use preset-only.'
+        )
       }
-      
-      dateRange.start = startDate.toISOString()
-      dateRange.end = endDate.toISOString()
 
       const response = await fetch('/api/run', {
         method: 'POST',
@@ -430,7 +434,27 @@ export default function DashboardPage() {
   // Get greeting
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
-  const ownerName = roleNames.gmName || 'Owner'
+  
+  // Get client display name for greeting (priority: clientName > mapped from clientId > empty)
+  const getClientDisplayName = (): string | null => {
+    if (clientName && clientName !== 'Analytics') {
+      return clientName
+    }
+    if (data?.clientId) {
+      const id = data.clientId.toLowerCase()
+      // Map clientId to display names
+      const nameMap: Record<string, string> = {
+        'melrose': 'Melrose',
+        'bestregard': 'Best Regards',
+        'fancy': 'Fancy',
+      }
+      return nameMap[id] || data.clientId.charAt(0).toUpperCase() + data.clientId.slice(1)
+    }
+    return null
+  }
+  
+  const clientDisplayName = getClientDisplayName()
+  const greetingName = clientDisplayName || (roleNames.gmName || null)
 
   return (
     <DashboardLayout
@@ -442,13 +466,14 @@ export default function DashboardPage() {
       <div data-client-theme={themeAttr} className="min-h-screen" style={{ backgroundColor: 'var(--bg-primary)' }}>
         {/* Header with Greeting */}
         <HeaderBar
-          title={`${greeting}, ${ownerName}`}
+          title={greetingName ? `${greeting}, ${greetingName}` : greeting}
           subtitle="Here's your business at a glance"
           datePreset={filters.datePreset}
           onDatePresetChange={(preset) => {
             setFilters({ datePreset: preset })
             setTimeout(() => fetchAnalysis(), 0)
           }}
+          dataCoverage={data?.dataCoverage}
         />
 
         <div className="max-w-[1920px] mx-auto px-6 py-8">

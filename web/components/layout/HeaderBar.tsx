@@ -11,6 +11,29 @@ interface HeaderBarProps {
   onDatePresetChange?: (preset: '7d' | '30d' | '90d' | 'mtd') => void
   onFilterClick?: () => void
   rightContent?: ReactNode
+  dataCoverage?: {
+    minDate?: string | null
+    maxDate?: string | null
+    dateCol?: string | null
+    rowCount?: number
+    columnsSample?: string[]
+  }
+}
+
+// Format date to "Oct 1, 2025" style
+const formatDate = (dateStr: string | null | undefined): string | null => {
+  if (!dateStr) return null
+  try {
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return null
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+  } catch {
+    return null
+  }
 }
 
 export function HeaderBar({
@@ -20,6 +43,7 @@ export function HeaderBar({
   onDatePresetChange,
   onFilterClick,
   rightContent,
+  dataCoverage,
 }: HeaderBarProps) {
   return (
     <header
@@ -40,12 +64,19 @@ export function HeaderBar({
           </div>
 
           <div className="flex items-center gap-4">
-            {onDatePresetChange && (
-              <DateRangeSelector
-                preset={datePreset}
-                onPresetChange={onDatePresetChange}
-              />
-            )}
+            <div className="flex flex-col items-end gap-1">
+              {onDatePresetChange && (
+                <DateRangeSelector
+                  preset={datePreset}
+                  onPresetChange={onDatePresetChange}
+                />
+              )}
+              {dataCoverage?.minDate && dataCoverage?.maxDate && (
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                  Data coverage: {formatDate(dataCoverage.minDate)} – {formatDate(dataCoverage.maxDate)}
+                </span>
+              )}
+            </div>
 
             {onFilterClick && (
               <button
