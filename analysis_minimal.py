@@ -266,11 +266,15 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     # ============================================================
     # STEP 3: Generate Charts
     # ============================================================
+    # Step 5: Always emit hour_of_day (24 rows) and day_of_week (7 rows)
+    hour_of_day_data = _compute_hourly_revenue(df, schema)  # Step 5: Use hour_of_day (Order Date attribution)
+    day_of_week_data = _compute_day_of_week(df, schema)     # Step 5: Order Date attribution
+    
     charts = {
-        "hour_of_day": _compute_hourly_revenue(df, schema),  # Step 5: Use hour_of_day (Order Date attribution)
-        "day_of_week": _compute_day_of_week(df, schema),     # Step 5: Order Date attribution
+        "hour_of_day": hour_of_day_data,
+        "day_of_week": day_of_week_data,
         # Legacy key for backward compatibility
-        "hourly_revenue": _compute_hourly_revenue(df, schema)
+        "hourly_revenue": hour_of_day_data
     }
     
     # ============================================================
@@ -282,8 +286,9 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
         "menu_volatility": _compute_menu_volatility(df, schema)
     }
     
-    # Log chart lengths (safe)
-    logger.info(f"Charts generated: hour_of_day={len(charts['hour_of_day'])}, day_of_week={len(charts['day_of_week'])}")
+    # Log chart keys and lengths (safe, no secrets)
+    logger.info(f"CHART_KEYS={list(charts.keys())}")
+    logger.info(f"Charts generated: hour_of_day={len(charts['hour_of_day'])} rows, day_of_week={len(charts['day_of_week'])} rows")
     
     # data_coverage was already computed from original dataset (before filtering)
     # Update rowCount to reflect filtered data
