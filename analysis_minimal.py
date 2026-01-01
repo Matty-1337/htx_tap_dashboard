@@ -273,6 +273,9 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     # Revenue Heatmap: hour × day grid (168 cells = 24 hours × 7 days)
     revenue_heatmap_data = _compute_revenue_heatmap(df, schema)
     
+    # Golden Hours: Peak revenue window (10PM-1AM)
+    golden_hours_data = _compute_golden_hours(df, schema)
+    
     charts = {
         "hour_of_day": hour_of_day_data,
         "day_of_week": day_of_week_data,
@@ -304,9 +307,10 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
         "kpis": kpis,
         "charts": charts,
         "tables": tables,
-        "dataCoverage": data_coverage
+        "dataCoverage": data_coverage,
+        "goldenHours": golden_hours_data  # Peak revenue window metrics
     }
-    
+
     return result
 
 
@@ -332,7 +336,8 @@ def _empty_response(client_id: str) -> Dict[str, Any]:
             "rowCount": 0,
             "dateCol": None,
             "columnsSample": []
-        }
+        },
+        "goldenHours": {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
     }
 
 
@@ -411,6 +416,18 @@ def _compute_kpis(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> Dict[st
             kpis["Removal Rate %"] = float((removal_amount / revenue) * 100)
         else:
             kpis["Removal Rate %"] = 0.0
+    
+    # Leakage = Void $ + Removal $ + Discount $
+    void_amount = kpis.get("Void $", 0.0)
+    removal_amount = kpis.get("Removal $", 0.0)
+    discount_amount = kpis.get("Discount $", 0.0)
+    leakage = void_amount + removal_amount + discount_amount
+    kpis["Leakage"] = float(leakage)
+    
+    if revenue > 0:
+        kpis["Leakage %"] = float((leakage / revenue) * 100)
+    else:
+        kpis["Leakage %"] = 0.0
     
     return kpis
 
@@ -682,6 +699,81 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
     except Exception as e:
         logger.warning(f"Revenue heatmap: Failed to compute: {e}")
         return []
+
+
+def _compute_golden_hours(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> Dict[str, Any]:
+    """
+    Compute Golden Hours metrics (10PM-1AM revenue window).
+    
+    Returns: Dict with revenue, percentage, orders, and hours string.
+    This represents the peak revenue window that generates the most business.
+    """
+    amount_col = schema.get("amount")
+    if not amount_col:
+        logger.warning("Golden hours: No amount column found")
+        return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
+    
+    # HARD REQUIREMENT: Use "Order Date" specifically
+    order_date_col = None
+    for col in df.columns:
+        if col.lower() == "order date":
+            order_date_col = col
+            break
+    
+    if not order_date_col or order_date_col not in df.columns:
+        logger.warning(f"Golden hours: 'Order Date' column not found")
+        return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
+    
+    try:
+        df_copy = df.copy()
+        
+        # Normalize types safely
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
+        
+        # Drop rows where Order Date is NaT
+        df_copy = df_copy.dropna(subset=[order_date_col])
+        
+        if df_copy.empty:
+            return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
+        
+        # Extract hour
+        df_copy['hour'] = df_copy[order_date_col].dt.hour
+        
+        # BUSINESS RULE: Hours 0 (12AM), 1 (1AM) count as previous day for attribution
+        # But for Golden Hours calculation, we want 10PM (22), 11PM (23), 12AM (0), 1AM (1)
+        # Filter for golden hours: 22 (10PM), 23 (11PM), 0 (12AM), 1 (1AM)
+        golden_hours_mask = df_copy['hour'].isin([22, 23, 0, 1])
+        golden_df = df_copy[golden_hours_mask]
+        
+        # Calculate total revenue for golden hours
+        golden_revenue = golden_df[amount_col].sum()
+        
+        # Calculate total revenue for percentage
+        total_revenue = df_copy[amount_col].sum()
+        
+        # Calculate orders (unique order IDs if available)
+        order_id_col = schema.get("order_id")
+        if order_id_col and order_id_col in golden_df.columns:
+            golden_orders = golden_df[order_id_col].nunique()
+        else:
+            golden_orders = len(golden_df)
+        
+        # Calculate percentage
+        percentage = (golden_revenue / total_revenue * 100) if total_revenue > 0 else 0.0
+        
+        logger.info(f"Golden hours (10PM-1AM): ${golden_revenue:,.2f} ({percentage:.1f}% of total), {golden_orders} orders")
+        
+        return {
+            "revenue": float(golden_revenue),
+            "percentage": float(percentage),
+            "orders": int(golden_orders),
+            "hours": "10PM-1AM"
+        }
+        
+    except Exception as e:
+        logger.warning(f"Golden hours: Failed to compute: {e}")
+        return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
 
 
 def _compute_waste_efficiency(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> Dict[str, Any]:

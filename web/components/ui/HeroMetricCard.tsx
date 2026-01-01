@@ -16,6 +16,8 @@ interface HeroMetricCardProps {
   onClick?: () => void
   className?: string
   delay?: number
+  borderColor?: 'green' | 'gold' | 'red' | 'orange' | 'blue' // Colored top border
+  detail?: string // Additional detail text below value (e.g., "17,406 orders processed")
 }
 
 export function HeroMetricCard({
@@ -26,6 +28,8 @@ export function HeroMetricCard({
   onClick,
   className,
   delay = 0,
+  borderColor,
+  detail,
 }: HeroMetricCardProps) {
   const isPositive = trend && trend.value > 0
   const isNegative = trend && trend.value < 0
@@ -40,6 +44,17 @@ export function HeroMetricCard({
       }).format(value)
     : value
 
+  // Border color mapping
+  const borderColorMap = {
+    green: '#00d4aa',
+    gold: '#ffd700',
+    red: '#ff4757',
+    orange: '#ff9f43',
+    blue: '#54a0ff',
+  }
+
+  const topBorderColor = borderColor ? borderColorMap[borderColor] : undefined
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -53,8 +68,22 @@ export function HeroMetricCard({
       )}
       style={{
         position: 'relative',
+        overflow: 'hidden',
       }}
     >
+      {/* Colored top border */}
+      {topBorderColor && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '4px',
+            backgroundColor: topBorderColor,
+          }}
+        />
+      )}
       {/* Title Row */}
       <div className="flex items-center justify-between mb-4">
         <span className="text-card-title">{title}</span>
@@ -69,6 +98,13 @@ export function HeroMetricCard({
       <div className="text-metric-large mb-2" style={{ color: 'var(--text-primary)' }}>
         {formattedValue}
       </div>
+
+      {/* Detail Text */}
+      {detail && (
+        <div className="text-caption muted mb-2">
+          {detail}
+        </div>
+      )}
 
       {/* Trend Indicator */}
       {trend && (
