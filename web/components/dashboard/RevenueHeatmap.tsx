@@ -90,10 +90,6 @@ export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) 
     return `$${Math.round(revenue)}`
   }
 
-  const isGoldenCell = (hour: number, day: string) => {
-    return hour === goldenWindow.hour && day === goldenWindow.day
-  }
-
   return (
     <div className="premium-card p-6">
       <div className="flex items-center justify-between mb-6">
@@ -131,7 +127,6 @@ export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) 
                     const key = `${hour}-${day}`
                     const revenue = heatmapData.map.get(key) || 0
                     const color = getColorForValue(revenue, heatmapData.maxRevenue)
-                    const isGolden = isGoldenCell(hour, day)
                     const isHovered = hoveredCell?.hour === hour && hoveredCell?.day === day
                     const percentage = totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0
 
@@ -145,12 +140,9 @@ export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) 
                         style={{
                           backgroundColor: color,
                           opacity: revenue === 0 ? 0.1 : 0.8,
-                          boxShadow: isGolden
-                            ? '0 0 12px rgba(34, 211, 238, 0.6)'
-                            : isHovered
+                          boxShadow: isHovered
                             ? '0 0 8px rgba(99, 102, 241, 0.4)'
                             : 'none',
-                          animation: isGolden ? 'pulse 2s infinite' : undefined,
                         }}
                         onMouseEnter={() => setHoveredCell({ hour, day })}
                         onMouseLeave={() => setHoveredCell(null)}
@@ -165,11 +157,6 @@ export function RevenueHeatmap({ data = [], onCellClick }: RevenueHeatmapProps) 
                           >
                             {revenueText}
                           </span>
-                        )}
-                        {isGolden && (
-                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                            <Sparkles size={12} style={{ color: '#22d3ee' }} />
-                          </div>
                         )}
                       </motion.div>
                     )

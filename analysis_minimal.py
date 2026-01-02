@@ -276,13 +276,20 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     # Golden Hours: Peak revenue window (10PM-1AM)
     golden_hours_data = _compute_golden_hours(df, schema)
     
+    # Tab Name correlations
+    tab_name_server_discount = _compute_tab_name_server_discount(df, schema)
+    tab_name_server_void = _compute_tab_name_server_void(df, schema)
+    
     charts = {
         "hour_of_day": hour_of_day_data,
         "day_of_week": day_of_week_data,
         # Revenue heatmap with hour AND day breakdown
         "revenue_heatmap": revenue_heatmap_data,
         # Legacy key for backward compatibility - NOW INCLUDES DAY for heatmap rendering
-        "hourly_revenue": revenue_heatmap_data
+        "hourly_revenue": revenue_heatmap_data,
+        # Tab Name correlation charts
+        "tab_name_server_discount": tab_name_server_discount,
+        "tab_name_server_void": tab_name_server_void
     }
     
     # ============================================================
@@ -323,7 +330,9 @@ def _empty_response(client_id: str) -> Dict[str, Any]:
             "hour_of_day": [],
             "day_of_week": [],
             "revenue_heatmap": [],
-            "hourly_revenue": []  # Legacy key (now contains hour+day for heatmap)
+            "hourly_revenue": [],  # Legacy key (now contains hour+day for heatmap)
+            "tab_name_server_discount": [],
+            "tab_name_server_void": []
         },
         "tables": {
             "waste_efficiency": {"columns": ["message"], "data": [{"message": "No data available"}]},

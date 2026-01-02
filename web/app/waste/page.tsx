@@ -12,7 +12,7 @@ import { SuspiciousAlertsPanel } from '@/components/dashboard/SuspiciousAlertsPa
 import { EmptyState } from '@/components/ui/EmptyState'
 import { SkeletonKpiCard } from '@/components/dashboard/SkeletonCard'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts'
-import { getWasteSources, getLeakageByReasonWithServer, getServerWasteRanking, getTimeBasedVoidPatterns, detectSuspiciousPatterns } from '@/lib/waste-utils'
+import { getWasteSources, getLeakageByReasonWithServer, getServerWasteRanking, detectSuspiciousPatterns } from '@/lib/waste-utils'
 import { getClientThemeAttr } from '@/lib/brand'
 
 interface AnalysisData {
@@ -109,9 +109,6 @@ export default function WastePage() {
     reasons,
     servers,
   }), [wasteSources, reasons, servers])
-
-  // Time-based patterns
-  const timePatterns = useMemo(() => getTimeBasedVoidPatterns(wasteData), [wasteData])
 
   // Suspicious alerts
   const suspiciousAlerts = useMemo(() => detectSuspiciousPatterns(wasteData), [wasteData])
@@ -228,80 +225,89 @@ export default function WastePage() {
             />
           </div>
 
-          {/* SECTION 3: Why It's Happening */}
+          {/* SECTION 3: Tab Name Correlations */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Void Reason Pie Chart */}
+            {/* Tab Name vs Server Discount */}
             <div className="premium-card p-6">
-              <h3 className="text-section-title mb-6">Void Reasons Breakdown</h3>
-              {reasons.length === 0 ? (
-                <EmptyState
-                  title="No Void Data"
-                  description="Void reason data is not available."
-                />
-              ) : (
+              <h3 className="text-section-title mb-6">Tab Name vs Server Discount</h3>
+              {data?.charts?.tab_name_server_discount && data.charts.tab_name_server_discount.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={reasons.slice(0, 7).map(r => ({ name: r.reason, value: r.amount }))}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {reasons.slice(0, 7).map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value: number) => `$${value.toLocaleString()}`}
-                      contentStyle={{
-                        backgroundColor: 'var(--bg-tertiary)',
-                        border: '1px solid var(--card-border)',
-                        borderRadius: 'var(--radius-md)',
-                        color: 'var(--text-primary)',
-                      }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-
-            {/* Time-Based Void Patterns */}
-            <div className="premium-card p-6">
-              <h3 className="text-section-title mb-6">Time-Based Void Patterns</h3>
-              {timePatterns.byHour.length === 0 ? (
-                <EmptyState
-                  title="No Time Data"
-                  description="Time-based void pattern data is not available."
-                />
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={timePatterns.byHour}>
+                  <BarChart data={data.charts.tab_name_server_discount.slice(0, 20)} layout="vertical">
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis
-                      dataKey="hour"
-                      label={{ value: 'Hour of Day', position: 'insideBottom', offset: -5 }}
+                      type="number"
+                      label={{ value: 'Discount Amount ($)', position: 'insideBottom', offset: -5 }}
                       style={{ fontSize: '12px', fill: 'var(--text-secondary)' }}
                     />
                     <YAxis
-                      label={{ value: 'Void Amount ($)', angle: -90, position: 'insideLeft' }}
+                      type="category"
+                      dataKey="tabName"
+                      width={150}
                       style={{ fontSize: '12px', fill: 'var(--text-secondary)' }}
                     />
                     <Tooltip
-                      formatter={(value: number) => `$${value.toLocaleString()}`}
+                      formatter={(value: number, name: string, props: any) => [
+                        `$${value.toLocaleString()}`,
+                        `${props.payload.server || 'Unknown'}`
+                      ]}
                       contentStyle={{
                         backgroundColor: 'var(--bg-tertiary)',
                         border: '1px solid var(--card-border)',
                         borderRadius: 'var(--radius-md)',
                         color: 'var(--text-primary)',
                       }}
+                      labelFormatter={(label) => `Tab: ${label}`}
                     />
-                    <Bar dataKey="amount" fill="var(--status-danger)" />
+                    <Bar dataKey="discountAmount" fill="var(--status-warning)" />
                   </BarChart>
                 </ResponsiveContainer>
+              ) : (
+                <EmptyState
+                  title="No Correlation Data"
+                  description="Tab name vs server discount correlation data is not available."
+                />
+              )}
+            </div>
+
+            {/* Tab Name vs Server Void */}
+            <div className="premium-card p-6">
+              <h3 className="text-section-title mb-6">Tab Name vs Server Void</h3>
+              {data?.charts?.tab_name_server_void && data.charts.tab_name_server_void.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={data.charts.tab_name_server_void.slice(0, 20)} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                    <XAxis
+                      type="number"
+                      label={{ value: 'Void Amount ($)', position: 'insideBottom', offset: -5 }}
+                      style={{ fontSize: '12px', fill: 'var(--text-secondary)' }}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="tabName"
+                      width={150}
+                      style={{ fontSize: '12px', fill: 'var(--text-secondary)' }}
+                    />
+                    <Tooltip
+                      formatter={(value: number, name: string, props: any) => [
+                        `$${value.toLocaleString()}`,
+                        `${props.payload.server || 'Unknown'}`
+                      ]}
+                      contentStyle={{
+                        backgroundColor: 'var(--bg-tertiary)',
+                        border: '1px solid var(--card-border)',
+                        borderRadius: 'var(--radius-md)',
+                        color: 'var(--text-primary)',
+                      }}
+                      labelFormatter={(label) => `Tab: ${label}`}
+                    />
+                    <Bar dataKey="voidAmount" fill="var(--status-danger)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyState
+                  title="No Correlation Data"
+                  description="Tab name vs server void correlation data is not available."
+                />
               )}
             </div>
           </div>
