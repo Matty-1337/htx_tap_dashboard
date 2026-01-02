@@ -1050,3 +1050,139 @@ def _compute_menu_volatility(df: pd.DataFrame, schema: Dict[str, Optional[str]])
         row['Volatility'] = float(row['Volatility'])
     
     return {"columns": columns, "data": rows}
+
+
+def _compute_tab_name_server_discount(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
+    """
+    Compute Tab Name vs Server Discount correlation chart.
+    
+    Returns: List of dicts with { tabName, server, discountAmount, count }
+    Shows which servers are giving discounts to which tab names.
+    """
+    discount_col = schema.get("discount_amount")
+    employee_col = schema.get("employee")
+    
+    if not discount_col or discount_col not in df.columns:
+        logger.warning("Tab name server discount: No discount column found")
+        return []
+    
+    if not employee_col or employee_col not in df.columns:
+        logger.warning("Tab name server discount: No employee column found")
+        return []
+    
+    # Check for Tab Name column
+    tab_name_col = None
+    for col in df.columns:
+        if col.lower() == "tab name":
+            tab_name_col = col
+            break
+    
+    if not tab_name_col:
+        logger.warning("Tab name server discount: No 'Tab Name' column found")
+        return []
+    
+    try:
+        df_copy = df.copy()
+        
+        # Normalize discount amounts
+        df_copy[discount_col] = pd.to_numeric(df_copy[discount_col], errors='coerce').fillna(0)
+        
+        # Filter rows with discounts > 0
+        df_with_discounts = df_copy[df_copy[discount_col] > 0]
+        
+        if df_with_discounts.empty:
+            logger.info("Tab name server discount: No rows with discounts > 0")
+            return []
+        
+        # Group by Tab Name and Server
+        grouped = df_with_discounts.groupby([tab_name_col, employee_col]).agg({
+            discount_col: ['sum', 'count']
+        }).reset_index()
+        grouped.columns = ['tabName', 'server', 'discountAmount', 'count']
+        
+        # Sort by discount amount and limit to top 50
+        grouped = grouped.sort_values('discountAmount', ascending=False).head(50)
+        
+        # Ensure types
+        grouped['discountAmount'] = grouped['discountAmount'].astype(float)
+        grouped['count'] = grouped['count'].astype(int)
+        
+        result = grouped.to_dict('records')
+        logger.info(f"Tab name server discount: Generated {len(result)} rows")
+        return result
+        
+    except Exception as e:
+        logger.warning(f"Tab name server discount: Failed to compute: {e}")
+        return []
+
+
+def _compute_tab_name_server_void(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
+    """
+    Compute Tab Name vs Server Void correlation chart.
+    
+    Returns: List of dicts with { tabName, server, voidAmount, count }
+    Shows which servers are voiding items for which tab names.
+    """
+    amount_col = schema.get("amount")
+    employee_col = schema.get("employee")
+    void_flag_col = schema.get("void_flag")
+    
+    if not amount_col or amount_col not in df.columns:
+        logger.warning("Tab name server void: No amount column found")
+        return []
+    
+    if not employee_col or employee_col not in df.columns:
+        logger.warning("Tab name server void: No employee column found")
+        return []
+    
+    if not void_flag_col or void_flag_col not in df.columns:
+        logger.warning("Tab name server void: No void flag column found")
+        return []
+    
+    # Check for Tab Name column
+    tab_name_col = None
+    for col in df.columns:
+        if col.lower() == "tab name":
+            tab_name_col = col
+            break
+    
+    if not tab_name_col:
+        logger.warning("Tab name server void: No 'Tab Name' column found")
+        return []
+    
+    try:
+        df_copy = df.copy()
+        
+        # Normalize amount
+        df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
+        
+        # Create void mask
+        void_mask = df_copy[void_flag_col].astype(str).str.lower().isin(['true', '1', 'yes', 'y'])
+        
+        # Filter void rows
+        df_voids = df_copy[void_mask]
+        
+        if df_voids.empty:
+            logger.info("Tab name server void: No void rows found")
+            return []
+        
+        # Group by Tab Name and Server
+        grouped = df_voids.groupby([tab_name_col, employee_col]).agg({
+            amount_col: ['sum', 'count']
+        }).reset_index()
+        grouped.columns = ['tabName', 'server', 'voidAmount', 'count']
+        
+        # Sort by void amount and limit to top 50
+        grouped = grouped.sort_values('voidAmount', ascending=False).head(50)
+        
+        # Ensure types
+        grouped['voidAmount'] = grouped['voidAmount'].astype(float)
+        grouped['count'] = grouped['count'].astype(int)
+        
+        result = grouped.to_dict('records')
+        logger.info(f"Tab name server void: Generated {len(result)} rows")
+        return result
+        
+    except Exception as e:
+        logger.warning(f"Tab name server void: Failed to compute: {e}")
+        return []
