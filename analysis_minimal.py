@@ -6,7 +6,6 @@ import logging
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timedelta
 import numpy as np
-import itertools
 
 from date_filter import find_date_column, apply_date_range
 from column_detect import (
@@ -270,14 +269,27 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     # Step 5: Always emit hour_of_day (24 rows) and day_of_week (7 rows)
     hour_of_day_data = _compute_hourly_revenue(df, schema)  # Step 5: Use hour_of_day (Order Date attribution)
     day_of_week_data = _compute_day_of_week(df, schema)     # Step 5: Order Date attribution
-    revenue_heatmap_data = _compute_revenue_heatmap(df, schema)  # Revenue by hour × day
+    
+    # Revenue Heatmap: hour × day grid (168 cells = 24 hours × 7 days)
+    revenue_heatmap_data = _compute_revenue_heatmap(df, schema)
+    
+    # Golden Hours: Peak revenue window (10PM-1AM)
+    golden_hours_data = _compute_golden_hours(df, schema)
+    
+    # Tab Name correlations
+    tab_name_server_discount = _compute_tab_name_server_discount(df, schema)
+    tab_name_server_void = _compute_tab_name_server_void(df, schema)
     
     charts = {
         "hour_of_day": hour_of_day_data,
         "day_of_week": day_of_week_data,
+        # Revenue heatmap with hour AND day breakdown
         "revenue_heatmap": revenue_heatmap_data,
-        # Legacy key for backward compatibility
-        "hourly_revenue": hour_of_day_data
+        # Legacy key for backward compatibility - NOW INCLUDES DAY for heatmap rendering
+        "hourly_revenue": revenue_heatmap_data,
+        # Tab Name correlation charts
+        "tab_name_server_discount": tab_name_server_discount,
+        "tab_name_server_void": tab_name_server_void
     }
     
     # ============================================================
@@ -291,7 +303,7 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
     
     # Log chart keys and lengths (safe, no secrets)
     logger.info(f"CHART_KEYS={list(charts.keys())}")
-    logger.info(f"Charts generated: hour_of_day={len(charts['hour_of_day'])} rows, day_of_week={len(charts['day_of_week'])} rows, revenue_heatmap={len(charts['revenue_heatmap'])} rows")
+    logger.info(f"Charts generated: hour_of_day={len(charts['hour_of_day'])} rows, day_of_week={len(charts['day_of_week'])} rows, revenue_heatmap={len(charts['revenue_heatmap'])} cells")
     
     # data_coverage was already computed from original dataset (before filtering)
     # Update rowCount to reflect filtered data
@@ -302,9 +314,10 @@ def run_full_analysis(df: pd.DataFrame, client_id: str, params: Dict[str, Any] =
         "kpis": kpis,
         "charts": charts,
         "tables": tables,
-        "dataCoverage": data_coverage
+        "dataCoverage": data_coverage,
+        "goldenHours": golden_hours_data  # Peak revenue window metrics
     }
-    
+
     return result
 
 
@@ -317,7 +330,9 @@ def _empty_response(client_id: str) -> Dict[str, Any]:
             "hour_of_day": [],
             "day_of_week": [],
             "revenue_heatmap": [],
-            "hourly_revenue": []  # Legacy key
+            "hourly_revenue": [],  # Legacy key (now contains hour+day for heatmap)
+            "tab_name_server_discount": [],
+            "tab_name_server_void": []
         },
         "tables": {
             "waste_efficiency": {"columns": ["message"], "data": [{"message": "No data available"}]},
@@ -330,7 +345,8 @@ def _empty_response(client_id: str) -> Dict[str, Any]:
             "rowCount": 0,
             "dateCol": None,
             "columnsSample": []
-        }
+        },
+        "goldenHours": {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
     }
 
 
@@ -410,6 +426,18 @@ def _compute_kpis(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> Dict[st
         else:
             kpis["Removal Rate %"] = 0.0
     
+    # Leakage = Void $ + Removal $ + Discount $
+    void_amount = kpis.get("Void $", 0.0)
+    removal_amount = kpis.get("Removal $", 0.0)
+    discount_amount = kpis.get("Discount $", 0.0)
+    leakage = void_amount + removal_amount + discount_amount
+    kpis["Leakage"] = float(leakage)
+    
+    if revenue > 0:
+        kpis["Leakage %"] = float((leakage / revenue) * 100)
+    else:
+        kpis["Leakage %"] = 0.0
+    
     return kpis
 
 
@@ -442,8 +470,8 @@ def _compute_hourly_revenue(df: pd.DataFrame, schema: Dict[str, Optional[str]]) 
     try:
         df_copy = df.copy()
         
-        # Normalize types safely
-        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        # Normalize types safely - parse as UTC first (matching date_filter behavior)
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce', utc=True)
         df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
         
         # Drop rows where Order Date is NaT
@@ -453,7 +481,16 @@ def _compute_hourly_revenue(df: pd.DataFrame, schema: Dict[str, Optional[str]]) 
             logger.warning(f"Hourly revenue chart: All dates invalid in 'Order Date'")
             return []
         
-        # Extract hour: pd.to_datetime(df["Order Date"]).dt.hour
+        # TIMEZONE FIX: Convert UTC to local timezone (Central Time)
+        local_tz = 'America/Chicago'  # Central Time Zone
+        if df_copy[order_date_col].dt.tz is not None:
+            # Convert from UTC to local timezone
+            df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
+            logger.info(f"Hourly revenue: Converted UTC timestamps to {local_tz} timezone")
+        else:
+            logger.info("Hourly revenue: Datetime is timezone-naive, assuming local time")
+        
+        # Extract hour from LOCAL timezone (not UTC)
         df_copy['Hour'] = df_copy[order_date_col].dt.hour
         
         logger.info(f"Hourly revenue chart: Extracted hour from 'Order Date' ({len(df_copy)} valid rows)")
@@ -522,8 +559,8 @@ def _compute_day_of_week(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> 
     try:
         df_copy = df.copy()
         
-        # Normalize types safely
-        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        # Normalize types safely - parse as UTC first (matching date_filter behavior)
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce', utc=True)
         df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
         
         # Drop rows where Order Date is NaT
@@ -533,9 +570,18 @@ def _compute_day_of_week(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> 
             logger.warning(f"Day of week chart: All dates invalid in 'Order Date'")
             return []
         
+        # TIMEZONE FIX: Convert UTC to local timezone (Central Time)
+        local_tz = 'America/Chicago'  # Central Time Zone
+        if df_copy[order_date_col].dt.tz is not None:
+            # Convert from UTC to local timezone
+            df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
+            logger.info(f"Day of week: Converted UTC timestamps to {local_tz} timezone")
+        else:
+            logger.info("Day of week: Datetime is timezone-naive, assuming local time")
+        
         logger.info(f"Day of week chart: Parsed 'Order Date' ({len(df_copy)} valid rows)")
         
-        # Extract day name (Monday..Sunday)
+        # Extract day name (Monday..Sunday) from LOCAL timezone
         df_copy['Day'] = df_copy[order_date_col].dt.day_name()
         
         # Force ordering Monday..Sunday (categorical order)
@@ -580,13 +626,12 @@ def _compute_day_of_week(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> 
 
 def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
     """
-    Compute revenue heatmap data (hour × day of week).
+    Compute revenue heatmap data with hour AND day breakdown.
     
-    Returns data suitable for the RevenueHeatmap component:
-    List[Dict] where each dict has: {"hour": int, "day": str, "revenue": float}
+    Returns: List of dicts with { hour, day, revenue } for each hour-day combination.
+    This creates a full 24×7 grid (168 cells) for the heatmap visualization.
     
     HARD REQUIREMENT: Uses "Order Date" as the ONLY timestamp for attribution.
-    Rationale: staffing/ops alignment requires guest-arrival ordering time, not payment time.
     """
     amount_col = schema.get("amount")
     if not amount_col:
@@ -607,59 +652,178 @@ def _compute_revenue_heatmap(df: pd.DataFrame, schema: Dict[str, Optional[str]])
     try:
         df_copy = df.copy()
         
-        # Normalize types safely
-        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce')
+        # Normalize types safely - parse as UTC first (matching date_filter behavior)
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce', utc=True)
+        df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
+        
+        # EXCLUDE VOIDS: Filter out rows where void flag is True
+        void_flag_col = schema.get("void_flag")
+        if void_flag_col and void_flag_col in df_copy.columns:
+            # Convert void flag to boolean, treat missing/NaN as False (not void)
+            df_copy[void_flag_col] = df_copy[void_flag_col].astype(str).str.lower().isin(['true', '1', 'yes', 'y'])
+            void_count_before = len(df_copy)
+            df_copy = df_copy[~df_copy[void_flag_col]]
+            void_count_after = len(df_copy)
+            logger.info(f"Revenue heatmap: Excluded {void_count_before - void_count_after} void rows")
+        else:
+            logger.info("Revenue heatmap: No void flag column found, including all rows")
+        
+        # Drop rows where Order Date is NaT
+        df_copy = df_copy.dropna(subset=[order_date_col])
+        
+        if df_copy.empty:
+            logger.warning(f"Revenue heatmap: All dates invalid in 'Order Date' or all rows were voids")
+            return []
+        
+        # TIMEZONE FIX: Convert UTC to local timezone (Central Time)
+        local_tz = 'America/Chicago'  # Central Time Zone
+        if df_copy[order_date_col].dt.tz is not None:
+            # Convert from UTC to local timezone
+            df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
+            logger.info(f"Revenue heatmap: Converted UTC timestamps to {local_tz} timezone")
+        else:
+            # If timezone-naive, assume it's already in local time
+            logger.info("Revenue heatmap: Datetime is timezone-naive, assuming local time")
+        
+        # Extract hour from LOCAL timezone (not UTC)
+        df_copy['hour'] = df_copy[order_date_col].dt.hour
+        
+        # BUSINESS RULE: Hour 2 (2AM) counts as previous day, hours 0-1 (12AM-1AM) stay on current day
+        # Bars operate 4PM-2AM, so 2AM is part of previous day's sales, but 12AM-1AM are current day
+        # Create adjusted date: subtract 1 day only for hour 2
+        df_copy['adjusted_date'] = df_copy[order_date_col].copy()
+        hour_2_mask = df_copy['hour'] == 2
+        df_copy.loc[hour_2_mask, 'adjusted_date'] = df_copy.loc[hour_2_mask, order_date_col] - pd.Timedelta(days=1)
+        
+        # Extract day of week from ADJUSTED date (for hour 2, this is previous day; for 0-1, current day)
+        df_copy['day_num'] = df_copy['adjusted_date'].dt.dayofweek  # 0=Monday, 6=Sunday
+        df_copy['day'] = df_copy['day_num'].map(lambda x: DAY_NAMES[x] if 0 <= x <= 6 else 'Mon')
+        
+        # Filter: Include hours 16-23 (4PM-11PM), 0-1 (12AM-1AM), and 2 (2AM for display, but data shifted)
+        # Display range: 4PM-1AM plus 2AM row (empty for current day, data on previous day)
+        display_hours = list(range(16, 24)) + [0, 1, 2]  # [16-23, 0, 1, 2]
+        df_copy = df_copy[df_copy['hour'].isin(display_hours)]
+        
+        logger.info(f"Revenue heatmap: Extracted hour and day from 'Order Date' with day shift for 2AM ({len(df_copy)} valid rows for hours 4PM-1AM+2AM)")
+        
+        # Aggregate by hour AND day: sum Net Price
+        hourly_daily = df_copy.groupby(['hour', 'day'], as_index=False).agg({amount_col: 'sum'})
+        hourly_daily.columns = ['hour', 'day', 'revenue']
+        
+        # Create grid for display hours: 16-23, 0, 1, 2 (11 hours × 7 days = 77 cells)
+        from itertools import product
+        all_combinations = list(product(display_hours, DAY_NAMES))
+        all_grid = pd.DataFrame(all_combinations, columns=['hour', 'day'])
+        
+        # Merge with actual data, fill missing with 0
+        heatmap = all_grid.merge(hourly_daily, on=['hour', 'day'], how='left').fillna(0)
+        
+        # Ensure types
+        heatmap['hour'] = heatmap['hour'].astype(int)
+        heatmap['day'] = heatmap['day'].astype(str)
+        heatmap['revenue'] = heatmap['revenue'].astype(float)
+        
+        # Sort by hour then by day order
+        # Custom hour sort order: 16-23, then 0-2 (display order: 4PM-11PM, 12AM-2AM)
+        hour_order = {hour: i for i, hour in enumerate(display_hours)}
+        heatmap['hour_sort'] = heatmap['hour'].map(hour_order)
+        day_order = {day: i for i, day in enumerate(DAY_NAMES)}
+        heatmap['day_sort'] = heatmap['day'].map(day_order)
+        heatmap = heatmap.sort_values(['hour_sort', 'day_sort']).drop(['hour_sort', 'day_sort'], axis=1)
+        
+        # Convert to list of dicts
+        result = heatmap.to_dict('records')
+        
+        logger.info(f"Revenue heatmap: Generated {len(result)} cells (11 hours × 7 days = 77 cells: 4PM-11PM, 12AM-1AM, 2AM, with 2AM shifted to previous day)")
+        return result
+        
+    except Exception as e:
+        logger.warning(f"Revenue heatmap: Failed to compute: {e}")
+        return []
+
+
+def _compute_golden_hours(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> Dict[str, Any]:
+    """
+    Compute Golden Hours metrics (10PM-1AM revenue window).
+    
+    Returns: Dict with revenue, percentage, orders, and hours string.
+    This represents the peak revenue window that generates the most business.
+    """
+    amount_col = schema.get("amount")
+    if not amount_col:
+        logger.warning("Golden hours: No amount column found")
+        return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
+    
+    # HARD REQUIREMENT: Use "Order Date" specifically
+    order_date_col = None
+    for col in df.columns:
+        if col.lower() == "order date":
+            order_date_col = col
+            break
+    
+    if not order_date_col or order_date_col not in df.columns:
+        logger.warning(f"Golden hours: 'Order Date' column not found")
+        return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
+    
+    try:
+        df_copy = df.copy()
+        
+        # Normalize types safely - parse as UTC first (matching date_filter behavior)
+        df_copy[order_date_col] = pd.to_datetime(df_copy[order_date_col], errors='coerce', utc=True)
         df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
         
         # Drop rows where Order Date is NaT
         df_copy = df_copy.dropna(subset=[order_date_col])
         
         if df_copy.empty:
-            logger.warning(f"Revenue heatmap: All dates invalid in 'Order Date'")
-            return []
+            return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
         
-        # Extract hour (0-23) and day of week (0=Monday, 6=Sunday)
-        df_copy['Hour'] = df_copy[order_date_col].dt.hour
-        df_copy['DayOfWeek'] = df_copy[order_date_col].dt.dayofweek  # 0=Monday, 6=Sunday
+        # TIMEZONE FIX: Convert UTC to local timezone (Central Time)
+        local_tz = 'America/Chicago'  # Central Time Zone
+        if df_copy[order_date_col].dt.tz is not None:
+            # Convert from UTC to local timezone
+            df_copy[order_date_col] = df_copy[order_date_col].dt.tz_convert(local_tz)
+            logger.info(f"Golden hours: Converted UTC timestamps to {local_tz} timezone")
+        else:
+            logger.info("Golden hours: Datetime is timezone-naive, assuming local time")
         
-        # Map day of week numbers to day names (Mon, Tue, Wed, Thu, Fri, Sat, Sun)
-        day_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
-        df_copy['Day'] = df_copy['DayOfWeek'].map(day_map)
+        # Extract hour from LOCAL timezone (not UTC)
+        df_copy['hour'] = df_copy[order_date_col].dt.hour
         
-        logger.info(f"Revenue heatmap: Extracted hour and day from 'Order Date' ({len(df_copy)} valid rows)")
+        # BUSINESS RULE: Hours 0 (12AM), 1 (1AM) count as previous day for attribution
+        # But for Golden Hours calculation, we want 10PM (22), 11PM (23), 12AM (0), 1AM (1)
+        # Filter for golden hours: 22 (10PM), 23 (11PM), 0 (12AM), 1 (1AM)
+        golden_hours_mask = df_copy['hour'].isin([22, 23, 0, 1])
+        golden_df = df_copy[golden_hours_mask]
         
-        # Aggregate by Hour and Day: sum revenue
-        heatmap = df_copy.groupby(['Hour', 'Day'], as_index=False)[amount_col].sum()
-        heatmap.columns = ['Hour', 'Day', 'revenue']
+        # Calculate total revenue for golden hours
+        golden_revenue = golden_df[amount_col].sum()
         
-        # Ensure all combinations of hour (0-23) and day (Mon-Sun) exist (fill missing with 0 revenue)
-        all_hours = list(range(24))
-        all_days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        # Calculate total revenue for percentage
+        total_revenue = df_copy[amount_col].sum()
         
-        # Create a full grid of all hour-day combinations
-        full_grid = pd.DataFrame(list(itertools.product(all_hours, all_days)), columns=['Hour', 'Day'])
+        # Calculate orders (unique order IDs if available)
+        order_id_col = schema.get("order_id")
+        if order_id_col and order_id_col in golden_df.columns:
+            golden_orders = golden_df[order_id_col].nunique()
+        else:
+            golden_orders = len(golden_df)
         
-        # Merge with actual data, filling missing with 0
-        heatmap = full_grid.merge(heatmap, on=['Hour', 'Day'], how='left').fillna(0)
+        # Calculate percentage
+        percentage = (golden_revenue / total_revenue * 100) if total_revenue > 0 else 0.0
         
-        # Ensure types: Hour is int, Day is str, revenue is float
-        heatmap['Hour'] = heatmap['Hour'].astype(int)
-        heatmap['Day'] = heatmap['Day'].astype(str)
-        heatmap['revenue'] = heatmap['revenue'].astype(float)
+        logger.info(f"Golden hours (10PM-1AM): ${golden_revenue:,.2f} ({percentage:.1f}% of total), {golden_orders} orders")
         
-        # Convert to list of dicts with lowercase keys: hour, day, revenue
-        result = heatmap.to_dict('records')
-        # Convert keys to lowercase for consistency with frontend
-        result = [{'hour': int(row['Hour']), 'day': str(row['Day']), 'revenue': float(row['revenue'])} for row in result]
-        
-        logger.info(f"Revenue heatmap: Generated {len(result)} data points (24 hours × 7 days)")
-        return result
+        return {
+            "revenue": float(golden_revenue),
+            "percentage": float(percentage),
+            "orders": int(golden_orders),
+            "hours": "10PM-1AM"
+        }
         
     except Exception as e:
-        logger.warning(f"Revenue heatmap: Failed to compute revenue heatmap from 'Order Date': {e}")
-        import traceback
-        logger.warning(traceback.format_exc())
-        return []
+        logger.warning(f"Golden hours: Failed to compute: {e}")
+        return {"revenue": 0.0, "percentage": 0.0, "orders": 0, "hours": "10PM-1AM"}
 
 
 def _compute_waste_efficiency(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> Dict[str, Any]:
@@ -886,3 +1050,139 @@ def _compute_menu_volatility(df: pd.DataFrame, schema: Dict[str, Optional[str]])
         row['Volatility'] = float(row['Volatility'])
     
     return {"columns": columns, "data": rows}
+
+
+def _compute_tab_name_server_discount(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
+    """
+    Compute Tab Name vs Server Discount correlation chart.
+    
+    Returns: List of dicts with { tabName, server, discountAmount, count }
+    Shows which servers are giving discounts to which tab names.
+    """
+    discount_col = schema.get("discount_amount")
+    employee_col = schema.get("employee")
+    
+    if not discount_col or discount_col not in df.columns:
+        logger.warning("Tab name server discount: No discount column found")
+        return []
+    
+    if not employee_col or employee_col not in df.columns:
+        logger.warning("Tab name server discount: No employee column found")
+        return []
+    
+    # Check for Tab Name column
+    tab_name_col = None
+    for col in df.columns:
+        if col.lower() == "tab name":
+            tab_name_col = col
+            break
+    
+    if not tab_name_col:
+        logger.warning("Tab name server discount: No 'Tab Name' column found")
+        return []
+    
+    try:
+        df_copy = df.copy()
+        
+        # Normalize discount amounts
+        df_copy[discount_col] = pd.to_numeric(df_copy[discount_col], errors='coerce').fillna(0)
+        
+        # Filter rows with discounts > 0
+        df_with_discounts = df_copy[df_copy[discount_col] > 0]
+        
+        if df_with_discounts.empty:
+            logger.info("Tab name server discount: No rows with discounts > 0")
+            return []
+        
+        # Group by Tab Name and Server
+        grouped = df_with_discounts.groupby([tab_name_col, employee_col]).agg({
+            discount_col: ['sum', 'count']
+        }).reset_index()
+        grouped.columns = ['tabName', 'server', 'discountAmount', 'count']
+        
+        # Sort by discount amount and limit to top 50
+        grouped = grouped.sort_values('discountAmount', ascending=False).head(50)
+        
+        # Ensure types
+        grouped['discountAmount'] = grouped['discountAmount'].astype(float)
+        grouped['count'] = grouped['count'].astype(int)
+        
+        result = grouped.to_dict('records')
+        logger.info(f"Tab name server discount: Generated {len(result)} rows")
+        return result
+        
+    except Exception as e:
+        logger.warning(f"Tab name server discount: Failed to compute: {e}")
+        return []
+
+
+def _compute_tab_name_server_void(df: pd.DataFrame, schema: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
+    """
+    Compute Tab Name vs Server Void correlation chart.
+    
+    Returns: List of dicts with { tabName, server, voidAmount, count }
+    Shows which servers are voiding items for which tab names.
+    """
+    amount_col = schema.get("amount")
+    employee_col = schema.get("employee")
+    void_flag_col = schema.get("void_flag")
+    
+    if not amount_col or amount_col not in df.columns:
+        logger.warning("Tab name server void: No amount column found")
+        return []
+    
+    if not employee_col or employee_col not in df.columns:
+        logger.warning("Tab name server void: No employee column found")
+        return []
+    
+    if not void_flag_col or void_flag_col not in df.columns:
+        logger.warning("Tab name server void: No void flag column found")
+        return []
+    
+    # Check for Tab Name column
+    tab_name_col = None
+    for col in df.columns:
+        if col.lower() == "tab name":
+            tab_name_col = col
+            break
+    
+    if not tab_name_col:
+        logger.warning("Tab name server void: No 'Tab Name' column found")
+        return []
+    
+    try:
+        df_copy = df.copy()
+        
+        # Normalize amount
+        df_copy[amount_col] = pd.to_numeric(df_copy[amount_col], errors='coerce').fillna(0)
+        
+        # Create void mask
+        void_mask = df_copy[void_flag_col].astype(str).str.lower().isin(['true', '1', 'yes', 'y'])
+        
+        # Filter void rows
+        df_voids = df_copy[void_mask]
+        
+        if df_voids.empty:
+            logger.info("Tab name server void: No void rows found")
+            return []
+        
+        # Group by Tab Name and Server
+        grouped = df_voids.groupby([tab_name_col, employee_col]).agg({
+            amount_col: ['sum', 'count']
+        }).reset_index()
+        grouped.columns = ['tabName', 'server', 'voidAmount', 'count']
+        
+        # Sort by void amount and limit to top 50
+        grouped = grouped.sort_values('voidAmount', ascending=False).head(50)
+        
+        # Ensure types
+        grouped['voidAmount'] = grouped['voidAmount'].astype(float)
+        grouped['count'] = grouped['count'].astype(int)
+        
+        result = grouped.to_dict('records')
+        logger.info(f"Tab name server void: Generated {len(result)} rows")
+        return result
+        
+    except Exception as e:
+        logger.warning(f"Tab name server void: Failed to compute: {e}")
+        return []

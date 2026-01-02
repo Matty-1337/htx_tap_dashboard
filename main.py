@@ -1,286 +1,354 @@
-"""
-FastAPI Backend for HTX TAP Analytics
-Deployed on Railway
-"""
-
-from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ValidationError
-from typing import Optional, Dict, Any
-import logging
-from supabase import create_client
-import os
-import json
-import time
-from datetime import datetime
-import pandas as pd
-import numpy as np
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
+from pydantic import BaseModel
+from typing import Dict, Any, Optional
 import uuid
-from htx_tap_analytics import run_full_analysis
+import logging
+import pandas as pd
+import os
+from pathlib import Path
 
-app = FastAPI(title="HTX TAP Analytics API", version="1.0.0")
-
-# Configure logging
+# Initialize logger first
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global exception handler for RequestValidationError (Pydantic validation)
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Handle Pydantic validation errors with detailed JSON response"""
-    errors = exc.errors()
-    logger.error(f"Validation error: {errors}")
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "error": "ValidationError",
-            "details": errors,
-            "message": "Request validation failed"
-        }
-    )
-
-# Global exception handler for all unhandled exceptions
-@app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    """Handle all unhandled exceptions with JSON response"""
-    import traceback
-    error_trace = traceback.format_exc()
-    logger.error(f"Unhandled exception: {exc.__class__.__name__}: {str(exc)}")
-    logger.error(f"Traceback: {error_trace}")
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": "InternalServerError",
-            "details": f"{exc.__class__.__name__}: {str(exc)}",
-            "message": "An unexpected error occurred"
-        }
-    )
-
-# CORS Configuration
-# Allow localhost and all Vercel deployments
-def is_allowed_origin(origin: str) -> bool:
-    if not origin:
-        return False
-    allowed = [
-        "http://localhost:3000",
-        "http://localhost:3001",
-    ]
-    # Allow all Vercel deployments
-    if origin.endswith(".vercel.app"):
-        return True
-    return origin in allowed
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=r"https?://(localhost|.*\.vercel\.app)(:\d+)?",
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
-
-# Client Folder Mapping
-CLIENT_FOLDER_MAP = {
-    "melrose": "Melrose",
-    "bestregard": "Bestregard",
-    "fancy": "Fancy"
-}
-
-def get_supabase_client():
-    """Initialize Supabase client from environment variables"""
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    
-    if not url or not key:
-        raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
-    
-    # Strip quotes if present (Railway sometimes adds quotes to env vars)
-    url = url.strip('"\'')
-    key = key.strip('"\'')
-    
-    return create_client(url, key)
-
-def get_client_folder(client_id: str) -> str:
-    """Map clientId to Supabase Storage folder path"""
-    normalized = client_id.lower()
-    if normalized not in CLIENT_FOLDER_MAP:
-        raise ValueError(f"Unknown clientId: {client_id}. Must be one of: {list(CLIENT_FOLDER_MAP.keys())}")
-    return CLIENT_FOLDER_MAP[normalized]
-
-def serialize_for_json(obj: Any, max_rows: int = 500) -> Any:
-    """Recursively serialize objects to JSON-compatible types"""
-    if isinstance(obj, pd.DataFrame):
-        # Limit rows and convert to records
-        df_limited = obj.head(max_rows)
-        records = df_limited.to_dict(orient="records")
-        # Convert numpy types in records
-        truncated = len(obj) > max_rows
-        return {
-            "data": [serialize_for_json(record) for record in records],
-            "total_rows": len(obj),
-            "returned_rows": len(df_limited),
-            "truncated": truncated,
-            "columns": list(obj.columns)
-        }
-    elif isinstance(obj, (np.integer, np.int64, np.int32)):
-        return int(obj)
-    elif isinstance(obj, (np.floating, np.float64, np.float32)):
-        return float(obj)
-    elif isinstance(obj, np.bool_):
-        return bool(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    elif isinstance(obj, dict):
-        return {k: serialize_for_json(v, max_rows) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [serialize_for_json(item, max_rows) for item in obj]
-    elif pd.isna(obj):
-        return None
+# Load .env file for local development (only if not in production)
+# Railway provides env vars automatically, so this only affects local/dev
+env_file_path = None
+env_file_exists = False
+if os.getenv("RAILWAY_ENVIRONMENT") is None and os.getenv("VERCEL") is None:
+    from dotenv import load_dotenv
+    # Use explicit absolute path based on main.py location
+    env_file_path = Path(__file__).resolve().parent / ".env"
+    env_file_exists = env_file_path.exists()
+    if env_file_exists:
+        load_dotenv(dotenv_path=env_file_path, override=False)
+        logger.info(f"[ENV] .env file exists: True, loaded from: {env_file_path}")
     else:
-        return obj
+        logger.info(f"[ENV] .env file exists: False, expected at: {env_file_path}")
+else:
+    logger.info("[ENV] Running in production (Railway/Vercel), skipping .env load")
+
+# Import date filtering utilities
+from date_filter import find_date_column, apply_date_range, RAW_DATE_COL
+
+# Import Supabase Storage utilities
+from supabase_storage import load_client_dataframe
+
+# Import analysis pipeline
+from analysis_minimal import run_full_analysis
+
+app = FastAPI()
 
 class RunRequest(BaseModel):
     clientId: str
-    params: Optional[Dict[str, Any]] = {}
+    params: Dict[str, Any] = {}
+    
+    def get_date_range(self) -> tuple[str | None, str | None]:
+        """Extract date range from params if present"""
+        date_range = self.params.get('dateRange')
+        if not date_range:
+            return None, None
+        
+        start = date_range.get('start')
+        end = date_range.get('end')
+        # Note: preset is handled in run_full_analysis, not here
+        return start, end
+
+@app.get("/debug/list-files")
+async def debug_list_files(client: str = "melrose"):
+    """
+    Debug endpoint to list files in Supabase storage for a client (dev only).
+    Returns raw keys separated by prefix source, with NO key reconstruction.
+    """
+    is_production = os.getenv("RAILWAY_ENVIRONMENT") is not None or os.getenv("VERCEL") is not None
+    if is_production:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Debug endpoint not available in production"}
+        )
+    
+    try:
+        from supabase_storage import list_files_raw_by_prefix, SUPABASE_BUCKET
+        from urllib.parse import unquote
+        
+        client_id = client.lower()
+        result = list_files_raw_by_prefix(SUPABASE_BUCKET, client_id)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "bucket": SUPABASE_BUCKET,
+                "clientId": client_id,
+                "raw_from_prefix_melrose": result["raw_from_prefix_melrose"],
+                "raw_from_prefix_Melrose": result["raw_from_prefix_Melrose"],
+                "files": result["files"]  # Each entry has: {name, key, source_prefix}
+            }
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to list files",
+                "details": str(e)
+            }
+        )
+
+@app.get("/debug/download-key")
+async def debug_download_key(bucket: str = "client-data", key: str = None):
+    """
+    Debug endpoint to download an exact key directly (dev only).
+    Key must be URL-encoded in the query parameter.
+    """
+    is_production = os.getenv("RAILWAY_ENVIRONMENT") is not None or os.getenv("VERCEL") is not None
+    if is_production:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Debug endpoint not available in production"}
+        )
+    
+    if not key:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "key parameter is required"}
+        )
+    
+    try:
+        from supabase_storage import download_object_admin
+        from urllib.parse import unquote
+        
+        # Decode the URL-encoded key
+        decoded_key = unquote(key)
+        
+        # Download using exact key (no guardrail, testing raw key)
+        file_bytes = download_object_admin(bucket, decoded_key, listed_keys=None)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": True,
+                "bucket": bucket,
+                "key": decoded_key,
+                "byte_len": len(file_bytes)
+            }
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "error": "Download failed",
+                "detail": e.detail
+            }
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to download file",
+                "details": str(e)
+            }
+        )
+
+@app.get("/debug/try-two")
+async def debug_try_two(bucket: str = "client-data", key1: str = None, key2: str = None):
+    """
+    Debug endpoint to try downloading two keys and return which one succeeds (dev only).
+    Keys must be URL-encoded in query parameters.
+    """
+    is_production = os.getenv("RAILWAY_ENVIRONMENT") is not None or os.getenv("VERCEL") is not None
+    if is_production:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Debug endpoint not available in production"}
+        )
+    
+    if not key1 or not key2:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "key1 and key2 parameters are required"}
+        )
+    
+    try:
+        from supabase_storage import download_object_admin
+        from urllib.parse import unquote
+        
+        decoded_key1 = unquote(key1)
+        decoded_key2 = unquote(key2)
+        
+        result = {
+            "bucket": bucket,
+            "key1": decoded_key1,
+            "key2": decoded_key2,
+            "key1_status": None,
+            "key1_bytes": None,
+            "key1_error": None,
+            "key2_status": None,
+            "key2_bytes": None,
+            "key2_error": None,
+            "winner": None
+        }
+        
+        # Try key1
+        try:
+            bytes1 = download_object_admin(bucket, decoded_key1, listed_keys=None)
+            result["key1_status"] = "success"
+            result["key1_bytes"] = len(bytes1)
+            result["winner"] = "key1"
+        except HTTPException as e:
+            result["key1_status"] = f"http_{e.status_code}"
+            result["key1_error"] = str(e.detail)
+        except Exception as e:
+            result["key1_status"] = "error"
+            result["key1_error"] = str(e)
+        
+        # Try key2
+        try:
+            bytes2 = download_object_admin(bucket, decoded_key2, listed_keys=None)
+            result["key2_status"] = "success"
+            result["key2_bytes"] = len(bytes2)
+            if not result["winner"]:
+                result["winner"] = "key2"
+        except HTTPException as e:
+            result["key2_status"] = f"http_{e.status_code}"
+            result["key2_error"] = str(e.detail)
+        except Exception as e:
+            result["key2_status"] = "error"
+            result["key2_error"] = str(e)
+        
+        return JSONResponse(
+            status_code=200,
+            content=result
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to test keys",
+                "details": str(e)
+            }
+        )
+
+@app.get("/debug/download-one")
+async def debug_download_one(client: str = "melrose"):
+    """
+    Smoke test endpoint to download one file (dev only).
+    Proves download works independently of /run pipeline.
+    """
+    is_production = os.getenv("RAILWAY_ENVIRONMENT") is not None or os.getenv("VERCEL") is not None
+    if is_production:
+        return JSONResponse(
+            status_code=403,
+            content={"error": "Debug endpoint not available in production"}
+        )
+    
+    try:
+        import hashlib
+        from supabase_storage import list_files_case_insensitive, download_object_admin, SUPABASE_BUCKET
+        
+        client_id = client.lower()
+        files = list_files_case_insensitive(SUPABASE_BUCKET, client_id)
+        
+        if not files:
+            return JSONResponse(
+                status_code=404,
+                content={"error": f"No files found for client: {client_id}"}
+            )
+        
+        # Prefer "October_____.csv" if present, otherwise pick first
+        # Support both "key" (new format) and "exact_key" (backward compatibility)
+        def get_key(file_dict):
+            return file_dict.get("key") or file_dict.get("exact_key")
+        
+        exact_key = None
+        for file in files:
+            if file.get("name") == "October_____.csv":
+                exact_key = get_key(file)
+                break
+        
+        if not exact_key:
+            exact_key = get_key(files[0]) if files else None
+        
+        if not exact_key:
+            return JSONResponse(
+                status_code=500,
+                content={"error": "No valid key found in file list"}
+            )
+        
+        # Get listed keys for guardrail
+        listed_keys = {get_key(f) for f in files if get_key(f)}
+        
+        # Download using exact key
+        file_bytes = download_object_admin(SUPABASE_BUCKET, exact_key, listed_keys=listed_keys)
+        
+        # Calculate SHA1 hash
+        sha1_hash = hashlib.sha1(file_bytes).hexdigest()
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "ok": True,
+                "key": exact_key,
+                "bytes": len(file_bytes),
+                "sha1": sha1_hash
+            }
+        )
+    except HTTPException as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "error": "Download failed",
+                "detail": e.detail
+            }
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Failed to download file",
+                "details": str(e)
+            }
+        )
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"ok": True, "timestamp": datetime.utcnow().isoformat()}
-
-@app.get("/debug/ping")
-async def debug_ping():
-    """Minimal debug endpoint that cannot fail"""
-    return {"ok": True, "ts": datetime.utcnow().isoformat()}
-
-@app.get("/debug/version")
-async def debug_version():
-    """Deployment version marker for verifying latest commit is deployed"""
-    git_commit = os.getenv("GIT_COMMIT_SHA", "2f1ba09")  # Fallback to current commit
-    return {
-        "git_commit": git_commit[:7] if len(git_commit) > 7 else git_commit,
-        "deployed_at": datetime.utcnow().isoformat()
-    }
-
-@app.post("/debug/echo")
-async def debug_echo(request: Request):
-    """Echo endpoint to test if requests reach FastAPI"""
-    try:
-        # Log request details
-        content_type = request.headers.get("content-type", "")
-        content_length = request.headers.get("content-length", "unknown")
-        logger.info(f"DEBUG ECHO: method=POST, path=/debug/echo, content-type={content_type}, content-length={content_length}")
-        
-        # Get safe headers subset
-        safe_headers = {}
-        safe_header_names = [
-            "content-type", "content-length", "user-agent",
-            "x-forwarded-for", "x-forwarded-proto", "x-forwarded-host", "host"
-        ]
-        for name in safe_header_names:
-            value = request.headers.get(name)
-            if value:
-                safe_headers[name] = value
-        
-        # Read and parse body
-        body_bytes = await request.body()
-        
-        # Try to parse as JSON
-        try:
-            body_text = body_bytes.decode('utf-8')
-            body_json = json.loads(body_text)
-            return {
-                "ok": True,
-                "headers": safe_headers,
-                "json": body_json
-            }
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            # Return raw body (first 200 chars) if JSON parse fails
-            body_preview = body_bytes[:200].decode('utf-8', errors='replace')
-            return {
-                "ok": False,
-                "raw": body_preview,
-                "error": str(e),
-                "headers": safe_headers
-            }
-    except Exception as e:
-        logger.error(f"DEBUG ECHO error: {str(e)}")
-        return {
-            "ok": False,
-            "error": str(e),
-            "error_type": type(e).__name__
-        }
-
-@app.get("/test-supabase")
-async def test_supabase():
-    """Test Supabase connection"""
-    try:
-        url = os.getenv("SUPABASE_URL", "").strip('"\'')
-        key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip('"\'')
-        bucket = os.getenv("SUPABASE_BUCKET", "client-data").strip('"\'')
-        
-        # Validate env vars
-        if not url:
-            return {"ok": False, "error": "SUPABASE_URL is not set", "url_set": bool(url)}
-        if not key:
-            return {"ok": False, "error": "SUPABASE_SERVICE_ROLE_KEY is not set", "key_set": bool(key)}
-        if not bucket:
-            return {"ok": False, "error": "SUPABASE_BUCKET is not set", "bucket_set": bool(bucket)}
-        
-        # Check key format (should be a JWT with 3 parts separated by dots)
-        key_parts = key.split('.')
-        if len(key_parts) != 3:
-            return {
-                "ok": False,
-                "error": f"Invalid key format: expected JWT with 3 parts, got {len(key_parts)} parts",
-                "key_preview": key[:20] + "..." if len(key) > 20 else key
-            }
-        
-        # Debug info
-        debug_info = {
-            "url_length": len(url),
-            "key_length": len(key),
-            "bucket": bucket,
-            "bucket_length": len(bucket),
-            "url_preview": url[:30] + "..." if len(url) > 30 else url
-        }
-        
-        supabase = get_supabase_client()
-        # Try to list files in Melrose folder
-        folder = "Melrose"
-        files = supabase.storage.from_(bucket).list(folder)
-        return {
+    """
+    Health check endpoint that reports environment variable presence (not values).
+    """
+    # Determine env file path (same logic as startup)
+    env_file_info = {"path": None, "exists": False}
+    if os.getenv("RAILWAY_ENVIRONMENT") is None and os.getenv("VERCEL") is None:
+        env_file_path = Path(__file__).resolve().parent / ".env"
+        env_file_info["path"] = str(env_file_path)
+        env_file_info["exists"] = env_file_path.exists()
+    
+    return JSONResponse(
+        status_code=200,
+        content={
             "ok": True,
-            "supabase_connected": True,
-            "bucket": bucket,
-            "folder": folder,
-            "file_count": len(files) if files else 0,
-            "files": files[:5] if files else [],  # First 5 files
-            "debug": debug_info
+            "cwd": os.getcwd(),
+            "env_file": env_file_info,
+            "env": {
+                "SUPABASE_URL": bool(os.getenv("SUPABASE_URL")),
+                "SUPABASE_SERVICE_ROLE_KEY": bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY")),
+                "SUPABASE_BUCKET": bool(os.getenv("SUPABASE_BUCKET")),
+            }
         }
-    except Exception as e:
-        import traceback
-        return {
-            "ok": False,
-            "error": str(e),
-            "traceback": traceback.format_exc()[-500:]
-        }
+    )
 
 @app.post("/run")
-async def run_analysis(request: RunRequest):
-    """Run full analysis for a client"""
-    # Generate unique request ID for correlation
+async def run_handler(request: RunRequest):
+    # STEP 2: FIRST-LINE logging + request echo (safe)
     request_id = str(uuid.uuid4())
-    start_time = time.time()
+    logger.info("RUN_START")
+    logger.info(f"request_id={request_id}, clientId={request.clientId}, params_keys={list(request.params.keys())}")
     
-    # FIRST-LINE logging with unique marker
-    params_keys = list(request.params.keys()) if request.params else []
-    logger.info(f"RUN_START request_id={request_id} clientId={request.clientId} params_keys={params_keys}")
+    # Extract date range if present
+    date_start, date_end = request.get_date_range()
+    if date_start and date_end:
+        logger.info(f"Date range: {date_start} to {date_end}")
     
-    # Force error switch to test JSON response bodies
-    if request.params.get("__force_error") is True:
-        logger.info(f"RUN_START force_error triggered request_id={request_id}")
+    # STEP 3: Force error switch to prove bodies return
+    if request.params.get("__force_error") == True:
         return JSONResponse(
             status_code=400,
             content={
@@ -291,162 +359,73 @@ async def run_analysis(request: RunRequest):
             }
         )
     
+    # STEP 5: Wrap entire body in try/except with guaranteed JSONResponse
     try:
-        # Validate clientId
-        folder = get_client_folder(request.clientId)
+        # ============================================================
+        # DATA LOADING SECTION
+        # ============================================================
+        # Extract dateRange from params to pass to file selection (for month filtering)
+        date_range_param = request.params.get('dateRange', {})
         
-        # Get Supabase client
-        try:
-            supabase = get_supabase_client()
-        except ValueError as e:
-            logger.error(f"Supabase configuration error: {str(e)}")
-            error_detail = {
-                "error": "ConfigurationError",
-                "details": str(e),
-                "message": f"{str(e)}. Hint: Check that SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables are set"
-            }
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=error_detail
-            )
+        # If preset is provided, convert to estimated start/end for month filtering
+        # (We use today's date as a conservative estimate - actual filtering happens later)
+        preset = date_range_param.get('preset')
+        if preset and not (date_range_param.get('start') and date_range_param.get('end')):
+            from analysis_minimal import compute_preset_window
+            from datetime import datetime
+            # Use today's date as a conservative estimate for month filtering
+            # This allows us to select relevant month files, actual filtering happens in analysis
+            today = pd.Timestamp.now(tz='UTC')
+            try:
+                est_start, est_end = compute_preset_window(preset, today)
+                logger.info(f"Converted preset '{preset}' to estimated dateRange for file selection: {est_start} to {est_end}")
+                date_range_param = {'start': est_start, 'end': est_end}
+            except Exception as e:
+                logger.warning(f"Could not convert preset '{preset}' to dateRange for file selection: {e}. Loading all files.")
+                date_range_param = {}
         
-        bucket = os.getenv("SUPABASE_BUCKET", "client-data")
+        # Load client data from Supabase Storage
+        # Pass dateRange to filter files by month intersection
+        raw_df, load_metadata = load_client_dataframe(request.clientId, date_range=date_range_param if date_range_param.get('start') and date_range_param.get('end') else None)
         
-        # Extract params
-        upload_to_db = request.params.get("upload_to_db", False)
-        report_period = request.params.get("report_period")
+        # Log safe metadata (no secrets, no raw data)
+        logger.info(f"Data loaded for client: {load_metadata['clientId']}")
+        if 'paths' in load_metadata and isinstance(load_metadata['paths'], list):
+            logger.info(f"Selected files: {load_metadata['paths']}")
+        else:
+            logger.info(f"Selected file: {load_metadata.get('path', 'unknown')}")
+        logger.info(f"File format: {load_metadata['format']}")
+        logger.info(f"DataFrame shape: {load_metadata['rows']} rows, {load_metadata['cols']} columns")
+        logger.info(f"Column names: {load_metadata['column_names']}")
         
-        # Run analysis
-        try:
-            results = run_full_analysis(
-                supabase,
-                bucket,
-                folder,
-                upload_to_db=upload_to_db,
-                report_period=report_period
-            )
-        except Exception as e:
-            import traceback
-            error_trace = traceback.format_exc()
-            error_msg = str(e)
-            error_type = e.__class__.__name__
-            # Log full error for debugging
-            logger.error(f"ERROR in run_full_analysis: {error_type}: {error_msg}")
-            logger.error(f"TRACEBACK: {error_trace}")
-            # Return structured error
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={
-                    "error": "RunFailed",
-                    "details": f"{error_type}: {error_msg}",
-                    "message": f"Analysis execution failed: {error_msg}. Hint: Check that CSV files exist in Supabase Storage folder and data format is correct."
-                }
-            )
+        # ============================================================
+        # ANALYSIS SECTION
+        # ============================================================
+        # Run full analysis pipeline (includes date filtering internally)
+        # Pass params dict which may include dateRange
+        analysis_result = run_full_analysis(raw_df, request.clientId, request.params)
         
-        # Check for errors
-        if isinstance(results, dict) and "error" in results:
-            error_msg = results.get('error', 'Unknown error')
-            error_details = results.get('details', error_msg)
-            logger.error(f"Analysis returned error: {error_msg}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "error": "AnalysisError",
-                    "details": error_details,
-                    "message": f"{error_msg}. Hint: Upload CSV files to client-data/{folder}/"
-                }
-            )
-        
-        # Serialize results
-        serialized = serialize_for_json(results)
-        
-        execution_time = time.time() - start_time
-        
-        # Extract KPIs, charts, and tables from results
-        kpis = {}
-        charts = {}
-        tables = {}
-        
-        # Extract KPIs from summaries
-        if "bottle_summary" in serialized:
-            kpis["bottle_conversion_pct"] = serialized["bottle_summary"].get("bottle_pct", 0)
-            kpis["bottle_premium"] = serialized["bottle_summary"].get("bottle_premium", 0)
-        
-        if "attachment_summary" in serialized:
-            kpis["food_attachment_rate"] = serialized["attachment_summary"].get("overall_rate", 0)
-            kpis["missed_revenue"] = serialized["attachment_summary"].get("total_missed_revenue", 0)
-        
-        # Extract chart data (hourly analysis for line chart)
-        if "hourly_analysis" in serialized and "data" in serialized["hourly_analysis"]:
-            charts["hourly_revenue"] = serialized["hourly_analysis"]["data"]
-        
-        # Extract day of week analysis
-        if "dow_analysis" in serialized and "data" in serialized["dow_analysis"]:
-            charts["day_of_week"] = serialized["dow_analysis"]["data"]
-        
-        # Extract tables (waste efficiency, employee performance, etc.)
-        if "waste_efficiency" in serialized and "data" in serialized["waste_efficiency"]:
-            tables["waste_efficiency"] = serialized["waste_efficiency"]
-        
-        if "employee_performance" in serialized and "data" in serialized["employee_performance"]:
-            tables["employee_performance"] = serialized["employee_performance"]
-        
-        if "menu_volatility" in serialized and "data" in serialized["menu_volatility"]:
-            tables["menu_volatility"] = serialized["menu_volatility"]
-        
-        response_data = {
-            "clientId": request.clientId,
-            "folder": folder,
-            "generatedAt": datetime.utcnow().isoformat(),
-            "kpis": kpis,
-            "charts": charts,
-            "tables": tables,
-            "executionTimeSeconds": round(execution_time, 2)
-        }
-        logger.info(f"Analysis completed successfully for {request.clientId} in {execution_time:.2f}s")
-        return response_data
+        # Return analysis result (already matches frontend structure)
+        return JSONResponse(
+            status_code=200,
+            content=analysis_result
+        )
         
     except HTTPException as e:
-        # Convert HTTPException to JSONResponse with request_id
-        error_detail = e.detail if isinstance(e.detail, dict) else {"message": str(e.detail)}
-        error_detail["request_id"] = request_id
-        logger.error(f"HTTPException in /run: status={e.status_code} request_id={request_id}")
         return JSONResponse(
             status_code=e.status_code,
             content={
                 "error": "HTTPException",
-                "detail": error_detail,
-                "request_id": request_id
-            }
-        )
-    except ValueError as e:
-        logger.error(f"ValueError in /run: {str(e)} request_id={request_id}")
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "error": "InvalidRequest",
-                "details": str(e),
-                "message": f"{str(e)}. Hint: clientId must be one of: melrose, bestregard, fancy",
+                "detail": e.detail if hasattr(e, 'detail') else str(e),
                 "request_id": request_id
             }
         )
     except Exception as e:
-        import traceback
-        error_trace = traceback.format_exc()
-        error_msg = str(e)
-        error_type = e.__class__.__name__
-        logger.error(f"Unhandled exception in /run: {error_type}: {error_msg} request_id={request_id}")
-        logger.error(f"Traceback: {error_trace}")
         return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             content={
                 "error": "Unhandled",
-                "details": f"{error_type}: {error_msg}",
+                "details": f"{type(e).__name__}: {str(e)}",
                 "request_id": request_id
             }
         )
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)

@@ -13,6 +13,7 @@ import { RevenueHeatmap } from '@/components/dashboard/RevenueHeatmap'
 import { TopPerformersCard } from '@/components/dashboard/TopPerformersCard'
 import { NeedsAttentionCard } from '@/components/dashboard/NeedsAttentionCard'
 import { ActionRail } from '@/components/dashboard/ActionRail'
+import { GoldenHoursBox } from '@/components/dashboard/GoldenHoursBox'
 import { getTeamLeaderboard, getWasteBreakdown } from '@/lib/data-utils'
 import { ActionItem } from '@/lib/action-engine'
 import { getClientThemeAttr } from '@/lib/brand'
@@ -38,6 +39,12 @@ interface AnalysisData {
     dateCol?: string | null
     rowCount?: number
     columnsSample?: string[]
+  }
+  goldenHours?: {
+    revenue: number
+    percentage: number
+    orders: number
+    hours: string
   }
   executionTimeSeconds?: number
   [key: string]: any
@@ -226,8 +233,13 @@ export default function DashboardPage() {
   const kpis = data?.kpis || {}
   const revenue = kpis.Revenue || kpis.revenue || 0
   const leakage = kpis.Leakage || kpis.leakage || 0
+  const leakagePercent = kpis['Leakage %'] || (revenue > 0 ? (leakage / revenue) * 100 : 0)
   const alerts = actionItems.filter(a => a.priority === 'high').length
   const opportunity = kpis.Opportunity || kpis.opportunity || 0
+  const transactions = kpis.Transactions || kpis.transactions || 0
+  
+  // Golden Hours data
+  const goldenHours = data?.goldenHours || { revenue: 0, percentage: 0, orders: 0, hours: '10PM-1AM' }
 
   // Calculate trends (simplified - would need historical data for real trends)
   const revenueTrend = 8.2 // Placeholder - would calculate from historical
@@ -486,14 +498,17 @@ export default function DashboardPage() {
               sparkline={generateSparkline(revenue, data?.charts?.hourly_revenue)}
               onClick={() => router.push('/time')}
               delay={0}
+              borderColor="green"
+              detail={transactions > 0 ? `${transactions.toLocaleString()} ${kpis.transactionsLabel || 'orders'} processed` : undefined}
             />
             <HeroMetricCard
               title="Leakage"
               value={leakage}
-              trend={{ value: leakage > 0 ? -12.3 : 0, period: 'of revenue' }}
+              trend={{ value: leakagePercent, period: 'of revenue' }}
               sparkline={generateSparkline(leakage)}
               onClick={() => router.push('/waste')}
               delay={0.1}
+              borderColor={leakagePercent > 30 ? 'red' : leakagePercent > 15 ? 'orange' : 'blue'}
             />
             <HeroMetricCard
               title="Alerts"
@@ -501,6 +516,7 @@ export default function DashboardPage() {
               trend={alerts > 0 ? { value: 0, period: 'new items' } : undefined}
               onClick={() => router.push('/actions')}
               delay={0.2}
+              borderColor={alerts > 0 ? 'orange' : 'blue'}
             />
             <HeroMetricCard
               title="Opportunity"
@@ -509,8 +525,19 @@ export default function DashboardPage() {
               sparkline={generateSparkline(opportunity)}
               onClick={() => router.push('/actions')}
               delay={0.3}
+              borderColor="gold"
             />
           </div>
+
+          {/* Golden Hours Highlight */}
+          {goldenHours.revenue > 0 && (
+            <GoldenHoursBox
+              revenue={goldenHours.revenue}
+              percentage={goldenHours.percentage}
+              orders={goldenHours.orders}
+              hours={goldenHours.hours}
+            />
+          )}
 
           {/* Server Grade Distribution + This Week's Actions */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
